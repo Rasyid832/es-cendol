@@ -37,7 +37,7 @@ $rooms = [
     <main class="px-12 py-10">
         <div class="flex justify-between items-center mb-6">
             <h1 class="text-xl font-semibold text-[#d7e2ff]">Daftar Room Ujian</h1>
-            <button onclick="location.href='buat_room.php'"
+            <button onclick="location.href='BuatRoom.php'"
                 class="bg-[#4d7ae0] hover:bg-[#3f68c9] text-white font-semibold px-5 py-2.5 rounded-full">
                 + Buat Room
             </button>

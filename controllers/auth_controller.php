@@ -27,7 +27,7 @@ if ($action === 'login') {
             if ($user['role'] === 'student') {
                 header("Location: ../views/student/dashboard.php");
             } elseif ($user['role'] === 'lecturer') {
-                header("Location: ../views/lecturer/dashboard.php");
+                header("Location: ../views/auth/GURU/DashboardGuru.php");
             } elseif ($user['role'] === 'admin') {
                 header("Location: ../views/admin/dashboard.php");
             }
