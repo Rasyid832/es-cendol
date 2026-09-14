@@ -1,19 +1,20 @@
 <?php
+// Enable error reporting untuk debugging jika terjadi error
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
 session_start();
+
+// Periksa session dan arahkan ke dashboard yang sesuai
 if (isset($_SESSION['user_id'])) {
-<<<<<<< HEAD
     if ($_SESSION['role'] === 'student') {
         header("Location: ../student/dashboard.php");
         exit();
     } elseif ($_SESSION['role'] === 'lecturer') {
+        // PERBAIKAN: Path diarahkan ke folder lecturer yang baru
         header("Location: ../lecturer/dashboard.php");
         exit();
     }
-=======
-    if ($_SESSION['role'] === 'student') header("Location: ../student/dashboard.php");
-    elseif ($_SESSION['role'] === 'lecturer') header("Location: ../auth/GURU/DashboardGuru.php");
-    exit();
->>>>>>> 921f4ff5740e49f8e0ef6a546eb46f85a4ea6ae5
 }
 ?>
 <!DOCTYPE html>
@@ -190,7 +191,7 @@ if (isset($_SESSION['user_id'])) {
     <!-- Container Utama Gabungan Robot + Form -->
     <div class="relative flex items-center justify-center">
 
-        <!-- MASKOT ROBOT CYBER DRONE (Ditambahkan transition-all duration-500 ease-in-out) -->
+        <!-- MASKOT ROBOT CYBER DRONE -->
         <div onclick="togglePower()" class="drone-floating absolute -top-14 right-6 z-50 cursor-pointer group flex flex-col items-center transition-all duration-500 ease-in-out">
             
             <div id="robot-speech" class="bg-slate-900/90 backdrop-blur-md text-white text-[11px] font-semibold px-3.5 py-1.5 rounded-full shadow-xl mb-2 border border-indigo-500/40 group-hover:scale-105 transition-all duration-500 flex items-center gap-2">
@@ -373,7 +374,7 @@ if (isset($_SESSION['user_id'])) {
                 statusText.className = "text-emerald-400 font-semibold tracking-wider transition-all duration-500";
                 statusBadge.className = "absolute top-5 left-6 z-40 flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/90 border border-emerald-500/40 text-[10px] font-mono-code transition-all duration-500 shadow-lg";
 
-                // Drone Robot Glow Mode (Konsisten ukuran border)
+                // Drone Robot Glow Mode
                 robotBody.className = "relative w-16 h-16 bg-slate-900 rounded-3xl shadow-[0_0_25px_rgba(16,185,129,0.4)] border-2 border-emerald-400 flex flex-col items-center justify-center transition-all duration-500 ease-in-out";
                 robotVisor.className = "w-11 h-7 bg-black rounded-2xl border border-emerald-500/50 flex items-center justify-center gap-1.5 shadow-[inset_0_0_10px_rgba(16,185,129,0.3)] transition-all duration-500";
                 
