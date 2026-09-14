@@ -66,10 +66,19 @@ if ($action === 'login') {
 
         header("Location: ../views/auth/login.php?status=registered");
         exit();
-    } catch (PDOException $e) {
-        die("Error Database Register: " . $e->getMessage());
-    }
-} else {
-    header("Location: ../views/auth/login.php");
-    exit();
+
+    } catch (PDOException $e) { 
+        die("Error Database Register: " . $e->getMessage()); 
+    } 
+
+} elseif ($action === 'logout') { 
+    session_unset(); 
+    session_destroy(); 
+
+    header("Location: ../views/auth/login.php"); 
+    exit(); 
+
+} else { 
+    header("Location: ../views/auth/login.php"); 
+    exit(); 
 }
