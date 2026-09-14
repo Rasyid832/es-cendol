@@ -1,6 +1,7 @@
 <?php
 session_start();
 if (isset($_SESSION['user_id'])) {
+<<<<<<< HEAD
     if ($_SESSION['role'] === 'student') {
         header("Location: ../student/dashboard.php");
         exit();
@@ -8,6 +9,11 @@ if (isset($_SESSION['user_id'])) {
         header("Location: ../lecturer/dashboard.php");
         exit();
     }
+=======
+    if ($_SESSION['role'] === 'student') header("Location: ../student/dashboard.php");
+    elseif ($_SESSION['role'] === 'lecturer') header("Location: ../auth/GURU/DashboardGuru.php");
+    exit();
+>>>>>>> 921f4ff5740e49f8e0ef6a546eb46f85a4ea6ae5
 }
 ?>
 <!DOCTYPE html>

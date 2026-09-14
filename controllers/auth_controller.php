@@ -24,19 +24,23 @@ if ($action === 'login') {
         $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if ($user && password_verify($password, $user['password'])) {
-            // Set session kunci untuk keamanan & kompatibilitas foreign key
+            // Set session kunci
             $_SESSION['user_id'] = $user['id'];
             $_SESSION['id']      = $user['id']; 
             $_SESSION['name']    = $user['name'];
             $_SESSION['email']   = $user['email'];
             $_SESSION['role']    = $user['role'];
 
-            // Redirect sesuai 2 role utama (Pastikan lokasi relatif file views benar)
+            // Redirect sesuai role
             if ($user['role'] === 'student') {
                 header("Location: ../views/student/dashboard.php");
                 exit();
             } elseif ($user['role'] === 'lecturer') {
+                // Sesuaikan jalur ini sesuai lokasi file dashboard dosen kamu (lecturer vs GURU)
                 header("Location: ../views/lecturer/dashboard.php");
+                exit();
+            } elseif ($user['role'] === 'admin') {
+                header("Location: ../views/admin/dashboard.php");
                 exit();
             } else {
                 header("Location: ../views/auth/login.php?status=wrong_credentials");
