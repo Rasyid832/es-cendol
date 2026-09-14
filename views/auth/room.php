@@ -1,0 +1,399 @@
+<?php
+$username = "Nopali";
+
+$message = "";
+$success = false;
+
+if ($_SERVER["REQUEST_METHOD"] === "POST") {
+    $roomCode = trim($_POST["roomCode"] ?? "");
+    $roomPassword = $_POST["roomPassword"] ?? "";
+
+    if ($roomCode === "" || $roomPassword === "") {
+        $message = "Kode room dan password wajib diisi.";
+    } else {
+        // TODO:
+        // INI DATABES AGEK ESSS
+        //
+        // Contoh:
+        // SELECT * FROM rooms
+        // WHERE room_code = '$roomCode'
+        // AND password = '$roomPassword'
+
+        $message = "Berhasil bergabung ke room!";
+        $success = true;
+    }
+}
+?>
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Room</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            background-color: #f7f7f8;
+            color: #111827;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .page-header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 76px;
+            background: #a4cdb8;
+            display: flex;
+            align-items: center;
+            padding: 0 40px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+            z-index: 100;
+        }
+
+        .user-pill {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 220px;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            background: #ffffff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #111827;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .user-icon {
+            width: 22px;
+            height: 22px;
+            fill: none;
+            stroke: #a4cdb8;
+        }
+
+        .username {
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            line-height: 1;
+        }
+
+        .page-wrapper {
+            width: 100%;
+            min-height: 100vh;
+            padding: 120px 24px 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .minimal-card {
+            background: #ffffff;
+            width: 100%;
+            max-width: 380px;
+            padding: 40px;
+            border-radius: 16px;
+            border: 1.6px solid #a4cdb8;
+            box-shadow: 0 4px 24px -8px rgba(165, 236, 164, 0.04);
+        }
+
+        .card-header {
+            margin-bottom: 32px;
+        }
+
+        .icon-box {
+            width: 40px;
+            height: 40px;
+            background: #f3f4f6;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            color: #374151;
+        }
+
+        .card-header h1 {
+            font-size: 25px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
+            margin-bottom: 6px;
+            text-align: center;
+        }
+
+        .input-field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .input-field label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #4b5563;
+        }
+
+        .input-field input {
+            width: 100%;
+            padding: 12px 16px;
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            border-radius: 10px;
+            font-size: 15px;
+            color: #111827;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .input-field input::placeholder {
+            color: #9ca3af;
+        }
+
+        .input-field input:focus {
+            background: #ffffff;
+            border-color: #111827;
+            box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.1);
+        }
+
+        button {
+            width: 100%;
+            padding: 14px;
+            margin-top: 12px;
+            background: #a4cdb8;
+            color: #ffffff;
+            border: none;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            transition: background 0.2s ease, transform 0.1s ease;
+        }
+
+        button:hover {
+            background: #3c815f;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #ffffff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        button.is-loading .btn-text {
+            display: none;
+        }
+
+        button.is-loading .spinner {
+            display: block;
+        }
+
+        button.is-success {
+            background: #059669;
+        }
+
+        .message {
+            margin-top: 15px;
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .message.success {
+            background: #ecfdf5;
+            color: #047857;
+        }
+
+        .message.error {
+            background: #fef2f2;
+            color: #b91c1c;
+        }
+
+        @media (max-width: 600px) {
+            .page-header {
+                padding: 0 20px;
+            }
+
+            .minimal-card {
+                padding: 30px 24px;
+            }
+
+            .page-wrapper {
+                padding-left: 16px;
+                padding-right: 16px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<header class="page-header">
+    <div class="user-pill">
+
+        <div class="user-avatar">
+            <svg class="user-icon"
+                 viewBox="0 0 24 24"
+                 fill="none"
+                 stroke="currentColor"
+                 stroke-width="2"
+                 stroke-linecap="round"
+                 stroke-linejoin="round">
+
+                <path d="M20 21a8 8 0 0 0-16 0"></path>
+                <circle cx="12" cy="7" r="4"></circle>
+
+            </svg>
+        </div>
+
+        <span class="username">
+            <?= htmlspecialchars($username) ?>
+        </span>
+
+    </div>
+</header>
+
+
+<div class="page-wrapper">
+
+    <main class="minimal-card">
+
+        <header class="card-header">
+
+            <div class="icon-box">
+
+                <svg width="20"
+                     height="20"
+                     viewBox="0 0 24 24"
+                     fill="none"
+                     stroke="currentColor"
+                     stroke-width="2"
+                     stroke-linecap="round"
+                     stroke-linejoin="round">
+
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path>
+                    <polyline points="10 17 15 12 10 7"></polyline>
+                    <line x1="15" y1="12" x2="3" y2="12"></line>
+
+                </svg>
+
+            </div>
+
+            <h1>Join Room</h1>
+
+        </header>
+
+
+        <form id="joinForm" method="POST">
+
+            <div class="input-field">
+
+                <label for="roomCode">
+                    Kode Room
+                </label>
+
+                <input
+                    type="text"
+                    id="roomCode"
+                    name="roomCode"
+                    placeholder="Masukkan Kode Room"
+                    autocomplete="off"
+                    required
+                >
+
+            </div>
+
+
+            <div class="input-field">
+
+                <label for="roomPassword">
+                    Password
+                </label>
+
+                <input
+                    type="password"
+                    id="roomPassword"
+                    name="roomPassword"
+                    placeholder="Masukkan Password Room"
+                    required
+                >
+
+            </div>
+
+
+            <button type="submit" id="joinBtn">
+
+                <span class="btn-text">
+                    Join
+                </span>
+
+                <span class="spinner"></span>
+
+            </button>
+
+        </form>
+
+
+        <?php if ($message !== ""): ?>
+
+            <div class="message <?= $success ? 'success' : 'error' ?>">
+                <?= htmlspecialchars($message) ?>
+            </div>
+
+        <?php endif; ?>
+
+    </main>
+
+</div>
+
+
+<script>
+    const joinForm = document.getElementById("joinForm");
+    const joinBtn = document.getElementById("joinBtn");
+
+    joinForm.addEventListener("submit", function () {
+
+        joinBtn.classList.add("is-loading");
+        joinBtn.disabled = true;
+
+    });
+</script>
+
+</body>
+</html>
