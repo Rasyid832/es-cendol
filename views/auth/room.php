@@ -74,195 +74,152 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Join Room</title>
+    <title>Masuk Room Ujian - CodeProcess</title>
 
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, sans-serif;
         }
 
         body {
-            background-color: #f8fafc;
+            background-color: #f1f5f9;
             color: #0f172a;
             min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
             -webkit-font-smoothing: antialiased;
         }
 
-        .page-header {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 76px;
-            background: #2563eb;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 40px;
-            box-shadow: 0 10px 30px rgba(37, 99, 235, 0.2);
-            z-index: 100;
+        /* --- CONTAINER UTAMA --- */
+        .join-wrapper {
+            width: 100%;
+            max-width: 440px;
         }
 
-        .user-pill {
+        /* --- HEADER BRANDING --- */
+        .brand-header {
             display: flex;
             align-items: center;
+            justify-content: center;
             gap: 12px;
+            margin-bottom: 24px;
         }
 
-        .user-avatar {
+        .brand-icon {
             width: 40px;
             height: 40px;
-            background: #ffffff;
-            border-radius: 50%;
+            background: #4f46e5;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #2563eb;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
-        .user-icon {
-            width: 22px;
-            height: 22px;
-            fill: none;
-            stroke: #2563eb;
-        }
-
-        .username {
             color: #ffffff;
-            font-size: 16px;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            line-height: 1;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
         }
 
-        .back-button {
-            color: #ffffff;
-            text-decoration: none;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 40px;
-            height: 40px;
-            border: 1px solid rgba(255, 255, 255, 0.4);
-            border-radius: 10px;
-            transition: 0.2s ease;
-            background: rgba(255, 255, 255, 0.1);
+        .brand-text {
+            font-size: 22px;
+            font-weight: 700;
+            color: #0f172a;
+            letter-spacing: -0.5px;
         }
 
-        .back-button:hover {
-            background: rgba(255, 255, 255, 0.25);
-            transform: translateX(-2px);
-        }
-
-        .back-button svg {
-            width: 20px;
-            height: 20px;
-            stroke: #ffffff;
-        }
-
-        .page-wrapper {
-            width: 100%;
-            min-height: 100vh;
-            padding: 120px 24px 24px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .minimal-card {
+        /* --- KARTU FORM --- */
+        .card {
             background: #ffffff;
-            width: 100%;
-            max-width: 380px;
-            padding: 40px;
-            border-radius: 16px;
-            border: 1.6px solid #bfdbfe;
-            box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.1);
+            border-radius: 20px;
+            padding: 36px 32px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
+            border: 1px solid #e2e8f0;
         }
 
         .card-header {
-            margin-bottom: 32px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            text-align: center;
+            margin-bottom: 28px;
         }
 
         .card-header h1 {
-            font-size: 24px;
-            font-weight: 600;
-            letter-spacing: -0.5px;
-            color: #1e293b;
-            text-align: center;
+            font-size: 20px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 6px;
         }
 
-        .input-field {
+        .card-header p {
+            font-size: 13px;
+            color: #64748b;
+        }
+
+        /* --- FORM INPUT --- */
+        .input-group {
             display: flex;
             flex-direction: column;
-            gap: 8px;
-            margin-bottom: 20px;
+            gap: 6px;
+            margin-bottom: 18px;
         }
 
-        .input-field label {
+        .input-group label {
             font-size: 13px;
-            font-weight: 500;
-            color: #475569;
+            font-weight: 600;
+            color: #334155;
         }
 
-        .input-field input {
+        .input-group input {
             width: 100%;
             padding: 12px 16px;
             background: #f8fafc;
             border: 1px solid #cbd5e1;
             border-radius: 10px;
-            font-size: 15px;
+            font-size: 14px;
             color: #0f172a;
-            transition: all 0.2s ease;
             outline: none;
+            transition: all 0.2s ease;
         }
 
-        .input-field input::placeholder {
-            color: #94a3b8;
-        }
-
-        .input-field input:focus {
+        .input-group input:focus {
             background: #ffffff;
-            border-color: #2563eb;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
         }
 
-        button {
+        /* --- TOMBOL SUBMIT --- */
+        .btn-submit {
             width: 100%;
-            padding: 14px;
-            margin-top: 12px;
-            background: #2563eb;
+            padding: 13px;
+            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
             color: #ffffff;
             border: none;
             border-radius: 10px;
-            font-size: 15px;
+            font-size: 14px;
             font-weight: 600;
             cursor: pointer;
             display: flex;
-            justify-content: center;
             align-items: center;
-            gap: 10px;
-            transition: background 0.2s ease, transform 0.1s ease;
+            justify-content: center;
+            gap: 8px;
+            transition: opacity 0.2s ease, transform 0.1s ease;
+            margin-top: 8px;
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.25);
         }
 
-        button:hover {
-            background: #1d4ed8;
+        .btn-submit:hover {
+            opacity: 0.95;
         }
 
-        button:active {
-            transform: scale(0.98);
+        .btn-submit:active {
+            transform: scale(0.99);
         }
 
         .spinner {
             display: none;
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
             border: 2px solid rgba(255, 255, 255, 0.3);
             border-top-color: #ffffff;
             border-radius: 50%;
@@ -270,138 +227,102 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         }
 
         @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
+            to { transform: rotate(360deg); }
         }
 
-        button.is-loading .btn-text {
+        .btn-submit.is-loading .btn-text {
             display: none;
         }
 
-        button.is-loading .spinner {
+        .btn-submit.is-loading .spinner {
             display: block;
         }
 
-        .message {
-            margin-top: 15px;
-            padding: 10px 12px;
-            border-radius: 8px;
+        /* --- NOTIFIKASI ERROR --- */
+        .alert-msg {
+            margin-top: 18px;
+            padding: 12px;
+            border-radius: 10px;
             font-size: 13px;
             text-align: center;
-            word-break: break-word;
-        }
-
-        .message.success {
-            background: #eff6ff;
-            color: #1d4ed8;
-            border: 1px solid #bfdbfe;
-        }
-
-        .message.error {
             background: #fef2f2;
-            color: #b91c1c;
+            color: #dc2626;
             border: 1px solid #fecaca;
         }
 
-        @media (max-width: 600px) {
-            .page-header {
-                padding: 0 20px;
-            }
+        /* --- FOOTER ATAS KEMBALI --- */
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 20px;
+            font-size: 13px;
+            color: #64748b;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
 
-            .minimal-card {
-                padding: 30px 24px;
-            }
-
-            .page-wrapper {
-                padding-left: 16px;
-                padding-right: 16px;
-            }
-
-            .username {
-                font-size: 14px;
-            }
+        .back-link:hover {
+            color: #4f46e5;
         }
     </style>
 </head>
 
 <body>
 
-<header class="page-header">
-    <div class="user-pill">
-        <div class="user-avatar">
-            <svg class="user-icon" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M20 21a8 8 0 0 0-16 0"></path>
-                <circle cx="12" cy="7" r="4"></circle>
-            </svg>
+    <div class="join-wrapper">
+        <!-- Logo & Nama Aplikasi -->
+        <div class="brand-header">
+            <div class="brand-icon">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <span class="brand-text">CodeProcess</span>
         </div>
 
-        <span class="username">
-            <?= htmlspecialchars($username) ?>
-        </span>
+        <!-- Kartu Utama -->
+        <div class="card">
+            <div class="card-header">
+                <h1>Masuk Room Ujian</h1>
+                <p>Masukkan kode room dan password ujian kamu.</p>
+            </div>
+
+            <form id="joinForm" method="POST">
+                <div class="input-group">
+                    <label for="roomCode">Kode Room</label>
+                    <input type="text" id="roomCode" name="roomCode" placeholder="Contoh: ROOM-HRRU" autocomplete="off" required>
+                </div>
+
+                <div class="input-group">
+                    <label for="roomPassword">Password / Passcode</label>
+                    <input type="password" id="roomPassword" name="roomPassword" placeholder="Masukkan Password Room" required>
+                </div>
+
+                <button type="submit" id="joinBtn" class="btn-submit">
+                    <span class="btn-text">Join Room</span>
+                    <span class="spinner"></span>
+                </button>
+            </form>
+
+            <?php if ($message !== ""): ?>
+                <div class="alert-msg">
+                    <?= htmlspecialchars($message) ?>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <a href="javascript:history.back()" class="back-link">← Kembali ke Halaman Sebelumnya</a>
     </div>
 
-    <a href="javascript:history.back()" class="back-button" title="Keluar ke halaman sebelumnya">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"></line>
-            <polyline points="12 19 5 12 12 5"></polyline>
-        </svg>
-    </a>
-</header>
+    <script>
+        const joinForm = document.getElementById("joinForm");
+        const joinBtn = document.getElementById("joinBtn");
 
-<div class="page-wrapper">
-    <main class="minimal-card">
-        <header class="card-header">
-            <h1>Join Room</h1>
-        </header>
-
-        <form id="joinForm" method="POST">
-            <div class="input-field">
-                <label for="roomCode">Kode Room</label>
-                <input
-                    type="text"
-                    id="roomCode"
-                    name="roomCode"
-                    placeholder="Masukkan Kode Room"
-                    autocomplete="off"
-                    required
-                >
-            </div>
-
-            <div class="input-field">
-                <label for="roomPassword">Password</label>
-                <input
-                    type="password"
-                    id="roomPassword"
-                    name="roomPassword"
-                    placeholder="Masukkan Password Room"
-                    required
-                >
-            </div>
-
-            <button type="submit" id="joinBtn">
-                <span class="btn-text">Join</span>
-                <span class="spinner"></span>
-            </button>
-        </form>
-
-        <?php if ($message !== ""): ?>
-            <div class="message <?= $success ? 'success' : 'error' ?>">
-                <?= htmlspecialchars($message) ?>
-            </div>
-        <?php endif; ?>
-    </main>
-</div>
-
-<script>
-    const joinForm = document.getElementById("joinForm");
-    const joinBtn = document.getElementById("joinBtn");
-
-    joinForm.addEventListener("submit", function () {
-        joinBtn.classList.add("is-loading");
-        joinBtn.disabled = true;
-    });
-</script>
-
+        joinForm.addEventListener("submit", function () {
+            joinBtn.classList.add("is-loading");
+            joinBtn.disabled = true;
+        });
+    </script>
 </body>
 </html>
