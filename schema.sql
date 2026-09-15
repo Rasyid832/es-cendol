@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS rooms (
     lecturer_id INT NOT NULL,
     subject_name VARCHAR(255) NOT NULL,    -- Nama Ujian / Mata Kuliah
     class_name VARCHAR(100) DEFAULT NULL,   -- Kelas (misal: IF-45-01)
+    exam_type VARCHAR(50) DEFAULT NULL,     -- Jenis Ujian (UAS, UTS, Kuis Mingguan, Praktikum, dst)
     room_code VARCHAR(50) NOT NULL UNIQUE,  -- Room ID (misal: CS101A)
     passcode VARCHAR(100) NOT NULL,         -- Kata Sandi Masuk
     duration INT NOT NULL DEFAULT 60,  -- Durasi Ujian (menit)
@@ -34,7 +35,10 @@ CREATE TABLE IF NOT EXISTS sessions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     room_id INT NOT NULL,
     student_id INT NOT NULL,
+    status ENUM('ongoing', 'completed') DEFAULT 'ongoing', -- Status pengerjaan siswa
+    score DECIMAL(5,2) DEFAULT NULL,        -- Nilai akhir ujian siswa (diisi setelah selesai dinilai)
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    finished_at TIMESTAMP NULL DEFAULT NULL, -- Waktu siswa menyelesaikan ujian
     FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -68,3 +72,13 @@ INSERT INTO users (name, email, identity_number, password, role) VALUES
 ('Administrator', 'admin@codeprocess.id', 'ADM001', '$2y$10$e.1s2yGf3s4d5f6g7h8i9o.0a1b2c3d4e5f6g7h8i9o', 'admin'),
 ('Dosen Pengampu', 'lecturer@univ.ac.id', '198501012010121001', '$2y$10$e.1s2yGf3s4d5f6g7h8i9o.0a1b2c3d4e5f6g7h8i9o', 'lecturer')
 ON DUPLICATE KEY UPDATE id=id;
+
+-- ===================================================
+-- MIGRASI UNTUK DATABASE YANG SUDAH ADA SEBELUMNYA
+-- (Jalankan blok ini jika tabel rooms/sessions sudah pernah dibuat
+--  dari versi schema.sql yang lama, agar tidak perlu drop database)
+-- ===================================================
+-- ALTER TABLE rooms ADD COLUMN exam_type VARCHAR(50) DEFAULT NULL AFTER class_name;
+-- ALTER TABLE sessions ADD COLUMN status ENUM('ongoing','completed') DEFAULT 'ongoing' AFTER student_id;
+-- ALTER TABLE sessions ADD COLUMN score DECIMAL(5,2) DEFAULT NULL AFTER status;
+-- ALTER TABLE sessions ADD COLUMN finished_at TIMESTAMP NULL DEFAULT NULL AFTER joined_at;
