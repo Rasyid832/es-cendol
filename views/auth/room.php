@@ -95,14 +95,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             padding: 24px;
             -webkit-font-smoothing: antialiased;
         }
-
-        /* --- CONTAINER UTAMA --- */
+        
         .join-wrapper {
             width: 100%;
             max-width: 440px;
         }
 
-        /* --- HEADER BRANDING --- */
         .brand-header {
             display: flex;
             align-items: center;
@@ -130,7 +128,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             letter-spacing: -0.5px;
         }
 
-        /* --- KARTU FORM --- */
         .card {
             background: #ffffff;
             border-radius: 20px;
@@ -156,7 +153,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             color: #64748b;
         }
 
-        /* --- FORM INPUT --- */
         .input-group {
             display: flex;
             flex-direction: column;
@@ -238,7 +234,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             display: block;
         }
 
-        /* --- NOTIFIKASI ERROR --- */
         .alert-msg {
             margin-top: 18px;
             padding: 12px;
@@ -271,7 +266,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <body>
 
     <div class="join-wrapper">
-        <!-- Logo & Nama Aplikasi -->
         <div class="brand-header">
             <div class="brand-icon">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
