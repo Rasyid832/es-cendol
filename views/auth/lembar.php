@@ -11,8 +11,8 @@ $conn = @new mysqli($host, $user, $pass, $dbname);
 
 // Dapatkan Data User dari Session
 $user_id = $_SESSION['user_id'] ?? null;
-$user_email = $_SESSION['email'] ?? 'SISWA';
-$identity_number = $_SESSION['identity_number'] ?? 'GUEST';
+$user_name = $_SESSION['name'] ?? 'SISWA';
+$identity_number = $_SESSION['identity_number'] ?? 'SISWA';
 
 // Ambil Data Ujian dari Database jika ada
 $room_id = isset($_GET['room_id']) ? intval($_GET['room_id']) : 1;
@@ -80,7 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
         <!-- HEADER BAR (Nama Siswa & Timer) -->
         <div class="flex justify-between items-center px-8 py-4 border-b border-gray-300">
             <div class="font-bold text-lg tracking-wider text-black">
-                NAMA: <span class="font-normal text-gray-800"><?= htmlspecialchars($user_email) ?> (<?= htmlspecialchars($identity_number) ?>)</span>
+                NAMA: <span class="font-normal text-gray-800"><?= htmlspecialchars($user_name) ?> (<?= htmlspecialchars($identity_number) ?>)</span>
             </div>
 
             <div class="font-bold text-lg tracking-wider text-black">
