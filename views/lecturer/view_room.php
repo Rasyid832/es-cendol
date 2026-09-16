@@ -6,26 +6,28 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'lecturer') {
     exit();
 }
 
-// require_once '../../config/db.php';
-// $lecturer_id = $_SESSION['user_id'];
+require_once __DIR__ . '/../../config/db.php';
 
-// =========================================================
-// DUMMY DATA MURID/SISWA
-// TODO: ganti dengan query asli ke tabel users/participants
-// setelah struktur tabel siswa fix.
-// =========================================================
-$siswa_list = [
-    ['nama_pengguna' => 'Ahmad Fauzan',        'tanggal_dibuat' => '2026-09-01 08:15:00', 'nim' => 'G1A022001'],
-    ['nama_pengguna' => 'Bunga Anastasya',      'tanggal_dibuat' => '2026-09-01 08:16:32', 'nim' => 'G1A022014'],
-    ['nama_pengguna' => 'Cahyo Purnomo',        'tanggal_dibuat' => '2026-09-02 09:02:11', 'nim' => 'G1A022027'],
-    ['nama_pengguna' => 'Dewi Kartika Sari',    'tanggal_dibuat' => '2026-09-02 09:05:47', 'nim' => 'G1A022033'],
-    ['nama_pengguna' => 'Eko Setiawan',         'tanggal_dibuat' => '2026-09-03 10:20:05', 'nim' => 'G1A022041'],
-    ['nama_pengguna' => 'Farah Nabila',         'tanggal_dibuat' => '2026-09-03 10:22:19', 'nim' => 'G1A022056'],
-    ['nama_pengguna' => 'Gilang Ramadhan',      'tanggal_dibuat' => '2026-09-04 13:00:00', 'nim' => 'G1A022062'],
-    ['nama_pengguna' => 'Hesti Wulandari',      'tanggal_dibuat' => '2026-09-04 13:04:53', 'nim' => 'G1A022079'],
-];
-
+$siswa_list = [];
 $error_message = '';
+
+try {
+    $stmt = $pdo->prepare("
+        SELECT 
+            id,
+            name AS nama_pengguna, 
+            identity_number AS nim, 
+            created_at AS tanggal_dibuat 
+        FROM users 
+        WHERE role = 'student' 
+        ORDER BY created_at DESC
+    ");
+    $stmt->execute();
+    $siswa_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+} catch (PDOException $e) {
+    $error_message = "Gagal mengambil data murid: " . $e->getMessage();
+}
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -109,7 +111,7 @@ $error_message = '';
                             <tr>
                                 <th class="px-6 py-4">Nama Pengguna</th>
                                 <th class="px-6 py-4">Tanggal Dibuat</th>
-                                <th class="px-6 py-4">NIM</th>
+                                <th class="px-6 py-4">NIM / Identitas</th>
                                 <th class="px-6 py-4 text-center">Aksi</th>
                             </tr>
                         </thead>
@@ -118,16 +120,16 @@ $error_message = '';
                                 <?php foreach ($siswa_list as $siswa): ?>
                                     <tr class="cyber-tr hover:bg-slate-50/80 transition-colors">
                                         <td class="px-6 py-4">
-                                            <p class="font-bold text-main-title transition-colors"><?= htmlspecialchars($siswa['nama_pengguna']) ?></p>
+                                            <p class="font-bold text-main-title transition-colors"><?= htmlspecialchars($siswa['nama_pengguna'] ?? '-') ?></p>
                                         </td>
                                         <td class="px-6 py-4 text-sub-title text-xs transition-colors">
-                                            <?= date('d M Y, H:i', strtotime($siswa['tanggal_dibuat'])) ?>
+                                            <?= !empty($siswa['tanggal_dibuat']) ? date('d M Y, H:i', strtotime($siswa['tanggal_dibuat'])) : '-' ?>
                                         </td>
                                         <td class="px-6 py-4 font-mono-code text-xs text-sub-title transition-colors">
-                                            <?= htmlspecialchars($siswa['nim']) ?>
+                                            <?= htmlspecialchars($siswa['nim'] ?? '-') ?>
                                         </td>
                                         <td class="px-6 py-4 text-center">
-                                            <a href="view_detail.php?nim=<?= urlencode($siswa['nim']) ?>" class="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl transition-all shadow-md inline-flex items-center gap-1.5">
+                                            <a href="view_detail.php?id=<?= urlencode($siswa['id']) ?>" class="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl transition-all shadow-md inline-flex items-center gap-1.5">
                                                 <i class="fa-solid fa-magnifying-glass"></i> Lihat Detail
                                             </a>
                                         </td>
@@ -137,7 +139,7 @@ $error_message = '';
                                 <tr>
                                     <td colspan="4" class="px-6 py-12 text-center text-slate-400 text-xs">
                                         <i class="fa-solid fa-user-graduate text-3xl mb-2 block opacity-50"></i>
-                                        Belum ada data murid.
+                                        Belum ada data murid yang terdaftar.
                                     </td>
                                 </tr>
                             <?php endif; ?>
