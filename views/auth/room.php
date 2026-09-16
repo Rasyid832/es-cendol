@@ -55,7 +55,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $_SESSION['room_id']   = $room['id'];
                     $_SESSION['room_code'] = $room['room_code'] ?? $room['code'];
 
-                    header("Location: lembar.php");
+                    header("Location: lembar.php?room_id=" . $room['id']);
                     exit();
                 } else {
                     $message = "Password yang kamu masukkan salah.";

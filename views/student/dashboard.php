@@ -106,7 +106,7 @@ try {
                     </p>
                 <?php endif; ?>
 
-                <form action="../../controllers/student/join_room.php" method="POST" class="flex flex-col sm:flex-row gap-3">
+                <form action="../auth/room.php" method="POST" class="flex flex-col sm:flex-row gap-3">
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
                     <div class="flex-1 flex items-center gap-3 bg-[#0b1120] border border-slate-700 rounded-xl px-4 py-3 focus-within:border-indigo-500 transition">
                         <i class="fa-solid fa-key text-slate-500"></i>

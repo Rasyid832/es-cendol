@@ -15,16 +15,17 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'lecturer') {
 
 // 3. Pemproses Form Submit (Backend Logic)
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $exam_name   = trim($_POST['exam_name'] ?? '');
-    $class       = trim($_POST['class'] ?? '');
-    $duration    = (int)($_POST['duration'] ?? 0);
-    $start_time  = $_POST['start_time'] ?? null;
-    $passcode    = trim($_POST['passcode'] ?? '');
-    $description = trim($_POST['description'] ?? '');
-    $room_code   = trim($_POST['room_code'] ?? '');
-    $lecturer_id = $_SESSION['user_id'];
+    $exam_name     = trim($_POST['exam_name'] ?? '');
+    $class         = trim($_POST['class'] ?? '');
+    $duration      = (int)($_POST['duration'] ?? 0);
+    $start_time    = $_POST['start_time'] ?? null;
+    $passcode      = trim($_POST['passcode'] ?? '');
+    $description   = trim($_POST['description'] ?? '');
+    $question_text = trim($_POST['question_text'] ?? ''); // [BARU] Menangkap input soal
+    $room_code     = trim($_POST['room_code'] ?? '');
+    $lecturer_id   = $_SESSION['user_id'];
 
-    if (empty($exam_name) || empty($duration) || empty($passcode) || empty($description) || empty($room_code)) {
+    if (empty($exam_name) || empty($duration) || empty($passcode) || empty($description) || empty($question_text) || empty($room_code)) {
         $_SESSION['error'] = "Harap isi semua kolom yang wajib (*)!";
         header("Location: create_room.php");
         exit();
@@ -32,19 +33,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     try {
         $stmt = $pdo->prepare("
-            INSERT INTO rooms (lecturer_id, subject_name, class_name, duration, start_time, passcode, description, room_code, status, created_at)
-            VALUES (:lecturer_id, :subject_name, :class_name, :duration, :start_time, :passcode, :description, :room_code, 'active', NOW())
+            INSERT INTO rooms (lecturer_id, subject_name, class_name, duration, start_time, passcode, description, question_text, room_code, status, created_at)
+            VALUES (:lecturer_id, :subject_name, :class_name, :duration, :start_time, :passcode, :description, :question_text, :room_code, 'active', NOW())
         ");
 
         $stmt->execute([
-            'lecturer_id'  => $lecturer_id,
-            'subject_name' => $exam_name,
-            'class_name'   => $class,
-            'duration'     => $duration,
-            'start_time'   => !empty($start_time) ? $start_time : null,
-            'passcode'     => $passcode,
-            'description'  => $description,
-            'room_code'    => $room_code
+            'lecturer_id'   => $lecturer_id,
+            'subject_name'  => $exam_name,
+            'class_name'    => $class,
+            'duration'      => $duration,
+            'start_time'    => !empty($start_time) ? $start_time : null,
+            'passcode'      => $passcode,
+            'description'   => $description,
+            'question_text' => $question_text, // [BARU] Masuk ke parameter query
+            'room_code'     => $room_code
         ]);
 
         $_SESSION['success'] = "Room ujian '$exam_name' berhasil dibuat!";
@@ -258,19 +260,35 @@ unset($_SESSION['error']);
 
                 <hr class="border-slate-200 transition-colors" id="form-divider">
 
-                <div class="space-y-3">
-                    <div class="flex items-center justify-between">
+                <div class="space-y-6">
+                    <!-- Deskripsi / Catatan Tambahan -->
+                    <div class="space-y-3">
                         <h2 class="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2" id="section-2-title">
-                            <i class="fa-solid fa-file-code"></i> Naskah & Instruksi Ujian
+                            <i class="fa-solid fa-circle-info"></i> Deskripsi / Catatan Tambahan
                         </h2>
-                        <span class="text-[10px] text-slate-400 font-mono-code">Akan tampil di samping editor mahasiswa</span>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 text-sub-title mb-1.5">
+                                Catatan / Informasi Umum Room <span class="text-rose-400">*</span>
+                            </label>
+                            <textarea name="description" rows="3" required placeholder="Tuliskan catatan singkat atau pengumuman untuk siswa..." class="cyber-input w-full bg-slate-50 border border-slate-300 rounded-xl p-4 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none leading-relaxed placeholder:text-slate-400"></textarea>
+                        </div>
                     </div>
 
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-700 text-sub-title mb-1.5">
-                            Soal / Instruksi Pengerjaan <span class="text-rose-400">*</span>
-                        </label>
-                        <textarea name="description" rows="9" required placeholder="Tuliskan instruksi atau naskah soal ujian di sini..." class="cyber-input w-full bg-slate-50 border border-slate-300 rounded-xl p-4 text-xs font-mono-code text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none leading-relaxed placeholder:text-slate-400"></textarea>
+                    <!-- [BARU] Naskah Soal Ujian -->
+                    <div class="space-y-3">
+                        <div class="flex items-center justify-between">
+                            <h2 class="text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2" id="section-3-title">
+                                <i class="fa-solid fa-file-code"></i> Naskah & Soal Ujian (LongText)
+                            </h2>
+                            <span class="text-[10px] text-slate-400 font-mono-code">Akan tampil di samping editor mahasiswa</span>
+                        </div>
+
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-700 text-sub-title mb-1.5">
+                                Soal / Studi Kasus / Instruksi Pemrograman <span class="text-rose-400">*</span>
+                            </label>
+                            <textarea name="question_text" rows="10" required placeholder="Tuliskan detail soal ujian, studi kasus, atau instruksi coding di sini..." class="cyber-input w-full bg-slate-50 border border-slate-300 rounded-xl p-4 text-xs font-mono-code text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none leading-relaxed placeholder:text-slate-400"></textarea>
+                        </div>
                     </div>
                 </div>
 
@@ -309,6 +327,7 @@ unset($_SESSION['error']);
         const formDivider = document.getElementById('form-divider');
         const section1Title = document.getElementById('section-1-title');
         const section2Title = document.getElementById('section-2-title');
+        const section3Title = document.getElementById('section-3-title');
         const roomCodeCard = document.getElementById('room-code-card');
         const roomCodeLabel = document.getElementById('room-code-label');
         const roomIdDisplay = document.getElementById('room_id_display');
@@ -355,6 +374,7 @@ unset($_SESSION['error']);
                 
                 section1Title.className = "text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2";
                 section2Title.className = "text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2";
+                section3Title.className = "text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2";
 
                 roomCodeCard.className = "p-5 rounded-xl border border-indigo-500/20 bg-slate-950/80 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all";
                 roomCodeLabel.className = "text-[11px] font-bold text-indigo-400 uppercase tracking-wide";
@@ -388,6 +408,7 @@ unset($_SESSION['error']);
 
                 section1Title.className = "text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2";
                 section2Title.className = "text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2";
+                section3Title.className = "text-xs font-bold text-indigo-600 uppercase tracking-wider flex items-center gap-2";
 
                 roomCodeCard.className = "p-5 rounded-xl border border-indigo-200 bg-indigo-50/50 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all";
                 roomCodeLabel.className = "text-[11px] font-bold text-indigo-600 uppercase tracking-wide";
