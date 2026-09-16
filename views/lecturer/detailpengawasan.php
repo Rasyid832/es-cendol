@@ -63,7 +63,6 @@ if ($conn && !$conn->connect_error) {
     <div class="flex-1 grid grid-cols-12 gap-6 p-6">
 
         <div class="col-span-8 flex flex-col gap-6">
-            
             <div class="relative bg-[#050A18] rounded-xl border border-slate-800/80 aspect-video overflow-hidden shadow-2xl flex items-center justify-center">
                 
                 <div class="absolute top-4 left-4 z-20 flex items-center gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-lg border border-white/10 text-xs font-semibold tracking-wide text-slate-200">
@@ -102,16 +101,14 @@ if ($conn && !$conn->connect_error) {
                     <p class="text-lg font-bold text-blue-400 tracking-wider">ONGOING</p>
                 </div>
             </div>
-
         </div>
 
         <div class="col-span-4 flex flex-col gap-5">
-            
             <div class="flex flex-col gap-3">
-                <button class="w-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold py-3 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+                <button onclick="sendWarning('Peringatan! Harap fokus pada layar ujian!')" class="w-full bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold py-3 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2 active:scale-95">
                     🔔 Kirim Peringatan Layar
                 </button>
-                <button class="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-semibold py-3 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+                <button onclick="stopExam()" class="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 font-semibold py-3 px-4 rounded-xl text-sm transition-all flex items-center justify-center gap-2 active:scale-95">
                     🚫 Hentikan Ujian Siswa
                 </button>
             </div>
@@ -125,13 +122,12 @@ if ($conn && !$conn->connect_error) {
                 </div>
             </div>
 
-            <div class="flex gap-2">
-                <input type="text" placeholder="Ketik pesan teguran..." class="flex-1 bg-[#0C152E] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500">
-                <button class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 rounded-xl text-white transition-all">
+            <form onsubmit="sendCustomLog(event)" class="flex gap-2">
+                <input type="text" id="log-message" placeholder="Ketik pesan teguran..." class="flex-1 bg-[#0C152E] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500" required>
+                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 rounded-xl text-white transition-all active:scale-95">
                     <svg class="w-4 h-4 transform rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                 </button>
-            </div>
-
+            </form>
         </div>
 
     </div>
@@ -144,10 +140,20 @@ if ($conn && !$conn->connect_error) {
         const targetCamID = `codeprocess-cam-${studentId}-${roomId}`;
 
         const supervisorPeer = new Peer();
+        let dataConnection = null;
 
         supervisorPeer.on('open', () => {
             connectStreams();
+            connectDataChannel();
         });
+
+        function connectDataChannel() {
+            dataConnection = supervisorPeer.connect(targetScreenID);
+            
+            dataConnection.on('open', () => {
+                console.log("Koneksi data kontrol terhubung ke siswa.");
+            });
+        }
 
         function connectStreams() {
             const screenCall = supervisorPeer.call(targetScreenID, createDummyStream());
@@ -174,7 +180,48 @@ if ($conn && !$conn->connect_error) {
             return canvas.captureStream();
         }
 
-        setInterval(connectStreams, 5000);
+        // --- FUNGSI KONTROL AKSI DOSEN ---
+        function sendWarning(text) {
+            if (dataConnection && dataConnection.open) {
+                dataConnection.send({ type: 'WARNING', message: text });
+                alert("Peringatan berhasil dikirim ke siswa!");
+            } else {
+                alert("Gagal mengirim! Siswa belum terhubung.");
+                connectDataChannel();
+            }
+        }
+
+        function sendCustomLog(e) {
+            e.preventDefault();
+            const input = document.getElementById('log-message');
+            const msg = input.value.trim();
+
+            if (msg && dataConnection && dataConnection.open) {
+                dataConnection.send({ type: 'WARNING', message: msg });
+                alert("Pesan teguran berhasil dikirim!");
+                input.value = "";
+            } else if (!dataConnection || !dataConnection.open) {
+                alert("Gagal mengirim! Siswa belum terhubung.");
+                connectDataChannel();
+            }
+        }
+
+        function stopExam() {
+            if (confirm("Apakah Anda yakin ingin menghentikan dan mengeluarkan siswa ini dari ujian?")) {
+                if (dataConnection && dataConnection.open) {
+                    dataConnection.send({ type: 'STOP_EXAM' });
+                    alert("Perintah hentikan ujian telah dikirim ke siswa.");
+                } else {
+                    alert("Gagal! Siswa tidak terhubung.");
+                    connectDataChannel();
+                }
+            }
+        }
+
+        setInterval(() => {
+            connectStreams();
+            if (!dataConnection || !dataConnection.open) connectDataChannel();
+        }, 5000);
     </script>
 </body>
 </html>

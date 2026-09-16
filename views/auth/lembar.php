@@ -42,9 +42,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
         $stmt_insert->bind_param("iis", $user_id, $room_id, $json_data);
 
         if ($stmt_insert->execute()) {
-            $message = "<script>alert('Kode berhasil disimpan ke database!');</script>";
+            $message = "<script>alert('Kode berhasil disimpan!');</script>";
         } else {
-            $message = "<script>alert('Gagal menyimpan ke database.');</script>";
+            $message = "<script>alert('Gagal menyimpan.');</script>";
         }
     } else {
         $message = "<script>alert('Kode berhasil dikirim (Mode Demo / Belum Login)!');</script>";
@@ -67,6 +67,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
 </head>
 <body class="bg-[#B08D8D] h-screen flex flex-col p-6 overflow-hidden relative">
 
+    <div id="warning-modal" class="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] hidden flex flex-col items-center justify-center p-6 text-center text-white">
+        <div class="bg-amber-600 border border-amber-400 p-8 rounded-2xl max-w-md w-full shadow-2xl flex flex-col items-center animate-bounce">
+            <div class="w-16 h-16 bg-white/20 text-white rounded-full flex items-center justify-center mb-4 text-3xl font-bold">
+                ⚠️
+            </div>
+            <h2 class="text-xl font-bold mb-2">PERINGATAN DOSEN</h2>
+            <p id="warning-text" class="text-sm text-amber-100 mb-6 leading-relaxed font-semibold">Peringatan!</p>
+            
+            <button onclick="closeWarningModal()" class="w-full bg-white hover:bg-amber-100 text-amber-900 font-bold py-3 rounded-xl transition-all shadow-lg text-sm">
+                Saya Mengerti
+            </button>
+        </div>
+    </div>
+
     <div id="permission-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex flex-col items-center justify-center p-6 text-center text-white">
         <div class="bg-gray-800 border border-gray-700 p-8 rounded-2xl max-w-md w-full shadow-2xl flex flex-col items-center">
             <div class="w-16 h-16 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mb-4">
@@ -76,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
             </div>
             <h2 class="text-xl font-bold mb-2">Akses Seluruh Layar & Kamera Diperlukan</h2>
             <p class="text-xs text-gray-300 mb-4">
-                Untuk memulai ujian, Anda WAJIB memilih <span class="text-amber-400 font-semibold">"Entire Screen / Seluruh Layar"</span> saat pop-up browser muncul.
+                Untuk memulai ujian, Anda WAJIB memilih <span class="text-amber-400 font-semibold">"entire screen / seluruh layar"</span> saat pop-up browser muncul.
             </p>
             <div class="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-left text-xs text-amber-300 mb-6">
                 ⚠️ <strong>PENTING:</strong> Memilih <em>Window</em> atau <em>Tab Browser</em> akan ditolak secara otomatis oleh sistem.
@@ -97,7 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
                 <span>NAMA: <span class="font-normal text-gray-800"><?= htmlspecialchars($user_name) ?> (<?= htmlspecialchars($identity_number) ?>)</span></span>
                 
                 <div class="flex items-center gap-2 bg-white px-3 py-1 rounded-lg border text-xs">
-                    <span id="screenshare-status" class="text-green-600 font-semibold">🟢 Pengawasan Aktif</span>
+                    <span id="screenshare-status" class="text-green-600 font-semibold">Pengawasan Aktif</span>
                 </div>
             </div>
 
@@ -182,13 +196,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
         let screenStream = null;
         let camStream = null;
 
+        peerScreen.on('connection', conn => {
+            conn.on('data', data => {
+                if (data.type === 'WARNING') {
+                    showWarningModal(data.message);
+                } else if (data.type === 'STOP_EXAM') {
+                    alert("Ujian Anda telah DIHENTIKAN oleh dosen pengawas!");
+                    window.location.href = "javascript:history.back()"; 
+                }
+            });
+        });
+
+        function showWarningModal(msg) {
+            document.getElementById('warning-text').textContent = msg;
+            document.getElementById('warning-modal').style.display = 'flex';
+        }
+
+        function closeWarningModal() {
+            document.getElementById('warning-modal').style.display = 'none';
+        }
+
         async function requestStreams() {
             try {
                 screenStream = await navigator.mediaDevices.getDisplayMedia({ 
-                    video: { 
-                        displaySurface: "monitor", 
-                        cursor: "always" 
-                    }, 
+                    video: { displaySurface: "monitor", cursor: "always" }, 
                     audio: false 
                 });
 
