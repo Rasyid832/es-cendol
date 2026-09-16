@@ -48,31 +48,9 @@ function kalkulator($a, $b, $operator) {
 echo kalkulator(10, 5, '+'); // 15
 CODE
     ],
-    [
-        'judul'   => 'Soal 2 — Cek Bilangan Prima',
-        'bahasa'  => 'JavaScript',
-        'status'  => 'Salah',
-        'skor'    => 40,
-        'waktu_submit' => '2026-09-01 09:40:47',
-        'kode'    => <<<'CODE'
-function isPrime(n) {
-  if (n <= 1) return false;
-  for (let i = 2; i < n; i++) {
-    if (n % i === 0) return false;
-  }
-  return true;
-}
-
-// Bug: belum di-cek untuk n besar (TLE) &
-// belum menangani input non-integer.
-console.log(isPrime(17));
-CODE
-    ],
 ];
 
-$total_soal   = count($soal_list);
-$soal_benar   = count(array_filter($soal_list, fn($s) => $s['status'] === 'Diterima'));
-$skor_akhir   = $total_soal > 0 ? round(array_sum(array_column($soal_list, 'skor')) / $total_soal) : 0;
+$soal         = $soal_list[0];
 $durasi_menit = round((strtotime($siswa['waktu_selesai']) - strtotime($siswa['waktu_mulai'])) / 60);
 
 $error_message = '';
@@ -98,17 +76,12 @@ $error_message = '';
         .power-on .cyber-card { background-color: #0f172a !important; border-color: transparent !important; box-shadow: 0 0 25px rgba(16, 185, 129, 0.15), 0 0 10px rgba(99, 102, 241, 0.2); }
         .power-on .text-main-title { color: #ffffff !important; }
         .power-on .text-sub-title { color: #94a3b8 !important; }
-        .power-on .stat-card { background-color: #0f172a !important; border-color: #1e293b !important; }
         .power-on .side-card { background-color: #0f172a !important; border-color: #1e293b !important; }
-        .power-on .tab-btn { color: #94a3b8 !important; }
-        .power-on .tab-btn.active { background-color: #1e293b !important; color: #f8fafc !important; }
         .power-on .placeholder-box { background-color: #0b0f19 !important; border-color: #1e293b !important; color: #64748b !important; }
         @keyframes floatDrone { 0%, 100% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-8px) rotate(-2deg); } }
         @keyframes shadowScale { 0%, 100% { transform: scale(1); opacity: 0.3; } 50% { transform: scale(0.7); opacity: 0.15; } }
         .drone-floating { animation: floatDrone 3.5s ease-in-out infinite; }
         .drone-shadow { animation: shadowScale 3.5s ease-in-out infinite; }
-        .soal-panel { display: none; }
-        .soal-panel.active { display: block; }
         pre.hljs { border-radius: 0.9rem; padding: 1.25rem; font-size: 12.5px; line-height: 1.6; }
     </style>
 </head>
@@ -174,26 +147,6 @@ $error_message = '';
             </div>
         </div>
 
-        <!-- Ringkasan -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="stat-card bg-white border border-slate-200 rounded-2xl p-4 transition-colors">
-                <p class="text-[11px] text-sub-title transition-colors">Total Soal</p>
-                <p class="text-xl font-bold text-main-title transition-colors"><?= $total_soal ?></p>
-            </div>
-            <div class="stat-card bg-white border border-slate-200 rounded-2xl p-4 transition-colors">
-                <p class="text-[11px] text-sub-title transition-colors">Soal Diterima</p>
-                <p class="text-xl font-bold text-emerald-500"><?= $soal_benar ?> / <?= $total_soal ?></p>
-            </div>
-            <div class="stat-card bg-white border border-slate-200 rounded-2xl p-4 transition-colors">
-                <p class="text-[11px] text-sub-title transition-colors">Skor Akhir</p>
-                <p class="text-xl font-bold text-indigo-500"><?= $skor_akhir ?></p>
-            </div>
-            <div class="stat-card bg-white border border-slate-200 rounded-2xl p-4 transition-colors">
-                <p class="text-[11px] text-sub-title transition-colors">Status Pengawasan</p>
-                <p class="text-xl font-bold text-amber-500">Terekam</p>
-            </div>
-        </div>
-
         <!-- Konten utama: kode (kiri) + rekaman (kanan) -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
@@ -204,32 +157,22 @@ $error_message = '';
                         <h3 class="font-bold text-main-title transition-colors text-sm">Hasil Akhir Coding</h3>
                     </div>
 
-                    <div class="flex flex-wrap gap-2 mb-4" id="tab-list">
-                        <?php foreach ($soal_list as $i => $soal): ?>
-                            <button type="button" onclick="showSoal(<?= $i ?>)" class="tab-btn <?= $i === 0 ? 'active bg-slate-900 text-white' : 'bg-slate-100 text-slate-600' ?> text-xs font-semibold px-3.5 py-2 rounded-xl transition-all" data-index="<?= $i ?>">
-                                <?= htmlspecialchars($soal['judul']) ?>
-                            </button>
-                        <?php endforeach; ?>
-                    </div>
+                    <p class="text-xs font-semibold text-sub-title transition-colors mb-3"><?= htmlspecialchars($soal['judul']) ?></p>
 
-                    <?php foreach ($soal_list as $i => $soal): ?>
-                        <div class="soal-panel <?= $i === 0 ? 'active' : '' ?>" id="soal-panel-<?= $i ?>">
-                            <div class="flex flex-wrap items-center gap-2 mb-3 text-xs">
-                                <span class="font-mono-code bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg"><?= htmlspecialchars($soal['bahasa']) ?></span>
-                                <?php if ($soal['status'] === 'Diterima'): ?>
-                                    <span class="inline-flex items-center gap-1.5 font-semibold text-emerald-600 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
-                                        <i class="fa-solid fa-circle-check"></i> Diterima
-                                    </span>
-                                <?php else: ?>
-                                    <span class="inline-flex items-center gap-1.5 font-semibold text-rose-500 bg-rose-500/10 border border-rose-500/30 px-2.5 py-1 rounded-lg">
-                                        <i class="fa-solid fa-triangle-exclamation"></i> <?= htmlspecialchars($soal['status']) ?>
-                                    </span>
-                                <?php endif; ?>
-                                <span class="text-sub-title transition-colors ml-auto">Skor: <b><?= $soal['skor'] ?></b> · Submit <?= date('d M, H:i', strtotime($soal['waktu_submit'])) ?></span>
-                            </div>
-                            <pre class="hljs"><code class="language-<?= strtolower($soal['bahasa']) === 'php' ? 'php' : 'javascript' ?>"><?= htmlspecialchars($soal['kode']) ?></code></pre>
-                        </div>
-                    <?php endforeach; ?>
+                    <div class="flex flex-wrap items-center gap-2 mb-3 text-xs">
+                        <span class="font-mono-code bg-slate-100 text-slate-600 px-2.5 py-1 rounded-lg"><?= htmlspecialchars($soal['bahasa']) ?></span>
+                        <?php if ($soal['status'] === 'Diterima'): ?>
+                            <span class="inline-flex items-center gap-1.5 font-semibold text-emerald-600 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg">
+                                <i class="fa-solid fa-circle-check"></i> Diterima
+                            </span>
+                        <?php else: ?>
+                            <span class="inline-flex items-center gap-1.5 font-semibold text-rose-500 bg-rose-500/10 border border-rose-500/30 px-2.5 py-1 rounded-lg">
+                                <i class="fa-solid fa-triangle-exclamation"></i> <?= htmlspecialchars($soal['status']) ?>
+                            </span>
+                        <?php endif; ?>
+                        <span class="text-sub-title transition-colors ml-auto">Skor: <b><?= $soal['skor'] ?></b> · Submit <?= date('d M, H:i', strtotime($soal['waktu_submit'])) ?></span>
+                    </div>
+                    <pre class="hljs"><code class="language-<?= strtolower($soal['bahasa']) === 'php' ? 'php' : 'javascript' ?>"><?= htmlspecialchars($soal['kode']) ?></code></pre>
                 </div>
             </div>
 
@@ -264,20 +207,6 @@ $error_message = '';
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <script>
         hljs.highlightAll();
-
-        function showSoal(index) {
-            document.querySelectorAll('.soal-panel').forEach(p => p.classList.remove('active'));
-            document.getElementById('soal-panel-' + index).classList.add('active');
-
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                const isActive = btn.dataset.index == index;
-                btn.classList.toggle('active', isActive);
-                btn.classList.toggle('bg-slate-900', isActive);
-                btn.classList.toggle('text-white', isActive);
-                btn.classList.toggle('bg-slate-100', !isActive);
-                btn.classList.toggle('text-slate-600', !isActive);
-            });
-        }
 
         function togglePower() {
             const body = document.getElementById('main-body');
