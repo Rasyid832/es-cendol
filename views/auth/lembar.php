@@ -1,83 +1,116 @@
 <?php
 session_start();
+require_once __DIR__ . '/../../config/db.php'; // $pdo (PDO) untuk pelacakan sesi/pelanggaran
 
-// Koneksi ke Database menggunakan PDO
-require_once __DIR__ . '/../../config/db.php';
+// Proteksi: wajib login sebagai student
+if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'student') {
+    header("Location: login.php");
+    exit();
+}
+
+// Koneksi ke Database (legacy, dipakai untuk exam_rooms & telemetry_logs)
+$host = "localhost";
+$user = "root";
+$pass = "";
+$dbname = "codeprocess_db";
+
+$conn = @new mysqli($host, $user, $pass, $dbname);
 
 // Dapatkan Data User dari Session
 $user_id = $_SESSION['user_id'] ?? null;
-$user_name = $_SESSION['name'] ?? 'User Coding';
-$identity_number = $_SESSION['identity_number'] ?? 'DEV-001';
+$user_email = $_SESSION['email'] ?? 'SISWA';
+$identity_number = $_SESSION['identity_number'] ?? 'GUEST';
 
-// Ambil project/room_id dari parameter URL (opsional)
-$room_id = isset($_GET['room_id']) ? intval($_GET['room_id']) : ($_SESSION['room_id'] ?? 1);
+// Ambil Data Ujian dari Database jika ada
+$room_id = isset($_GET['room_id']) ? intval($_GET['room_id']) : 1;
+$exam_title = "Pengerjaan Ujian Coding";
+$duration_minutes = 60;
 
-// Default Fallback
-$project_title = "Workspace Project";
-$duration_minutes = 90; // Default durasi 90 menit
-$project_description = "Tulis dan kembangkan kode program Anda di sini.";
-$question_text    = "// Tulis solusi koding Anda di sini\nprint('Hello World');";
-
+// === GUARD: wajib sudah "join" dulu lewat dashboard, dan sesi harus masih 'ongoing' ===
+// Ini yang menutup celah: sebelumnya room_id bisa diketik manual di URL tanpa join,
+// dan siswa yang sudah keluar/selesai masih bisa membuka lagi lewat back/history browser.
 try {
-    $stmtRoom = $pdo->prepare("SELECT * FROM rooms WHERE id = :id LIMIT 1");
-    $stmtRoom->execute(['id' => $room_id]);
-    $room = $stmtRoom->fetch(PDO::FETCH_ASSOC);
+    $stmtSession = $pdo->prepare("
+        SELECT * FROM sessions
+        WHERE room_id = :room_id AND student_id = :student_id
+        ORDER BY id DESC LIMIT 1
+    ");
+    $stmtSession->execute(['room_id' => $room_id, 'student_id' => $user_id]);
+    $exam_session = $stmtSession->fetch(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log('[LEMBAR GUARD ERROR] ' . $e->getMessage());
+    $exam_session = false;
+}
 
-    if ($room) {
-        $project_title       = $room['subject_name'] ?? $room['title'] ?? $room['name'] ?? "Workspace Project";
-        $duration_minutes = isset($room['duration']) ? intval($room['duration']) : 90;
-        $project_description = $room['description'] ?? "Silakan ikuti instruksi project dengan teliti.";
-        
-        if (!empty($room['question_text'])) {
-            $question_text = $room['question_text'];
+if (!$exam_session) {
+    $_SESSION['join_error'] = "Anda belum bergabung ke room ini. Masukkan ID Room dari dashboard.";
+    header("Location: ../student/dashboard.php");
+    exit();
+}
+
+if ($exam_session['status'] === 'forfeited') {
+    $_SESSION['join_error'] = "Ujian ini sudah gugur karena Anda pernah keluar dari halaman ujian / melanggar aturan.";
+    header("Location: ../student/dashboard.php");
+    exit();
+}
+
+if ($exam_session['status'] === 'completed') {
+    $_SESSION['join_error'] = "Anda sudah menyelesaikan/mengumpulkan ujian ini sebelumnya.";
+    header("Location: ../student/dashboard.php");
+    exit();
+}
+
+// Token CSRF untuk komunikasi ke controller pelanggaran (report_violation.php / leave_exam.php)
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
+if ($conn && !$conn->connect_error) {
+    $query_room = "SELECT * FROM exam_rooms WHERE id = ?";
+    if ($stmt = $conn->prepare($query_room)) {
+        $stmt->bind_param("i", $room_id);
+        $stmt->execute();
+        $room_result = $stmt->get_result();
+        if ($room_result->num_rows > 0) {
+            $room = $room_result->fetch_assoc();
+            $exam_title = $room['title'];
+            $duration_minutes = $room['duration_minutes'];
         }
     }
-} catch (PDOException $e) {
-    // Abaikan atau log error jika diperlukan
 }
 
 // Handling Form Submit Kodingan
 $message = "";
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
     $submitted_code = $_POST['code_input'] ?? '';
-    $language = $_POST['language'] ?? 'python';
+    $language = $_POST['language'] ?? 'javascript';
 
-    if ($user_id) {
-        try {
-            $stmtSession = $pdo->prepare("SELECT id FROM sessions WHERE room_id = :room_id AND student_id = :student_id LIMIT 1");
-            $stmtSession->execute(['room_id' => $room_id, 'student_id' => $user_id]);
-            $session = $stmtSession->fetch(PDO::FETCH_ASSOC);
+    if ($conn && !$conn->connect_error && $user_id) {
+        $json_data = json_encode(['language' => $language, 'code' => $submitted_code]);
+        $insert_query = "INSERT INTO telemetry_logs (student_id, room_id, flight_time_data) VALUES (?, ?, ?)";
+        $stmt_insert = $conn->prepare($insert_query);
+        $stmt_insert->bind_param("iis", $user_id, $room_id, $json_data);
 
-            if ($session) {
-                $session_id = $session['id'];
-            } else {
-                $stmtNewSession = $pdo->prepare("INSERT INTO sessions (room_id, student_id, status) VALUES (:room_id, :student_id, 'ongoing')");
-                $stmtNewSession->execute(['room_id' => $room_id, 'student_id' => $user_id]);
-                $session_id = $pdo->lastInsertId();
+        if ($stmt_insert->execute()) {
+            $message = "<script>alert('Kode berhasil disimpan ke database!');</script>";
+        } else {
+            $message = "<script>alert('Gagal menyimpan ke database.');</script>";
+        }
+
+        // Tandai sesi ujian ini SELESAI (bukan gugur), supaya siswa tidak bisa membuka ulang
+        if ($pdo) {
+            try {
+                $stmtFinish = $pdo->prepare("
+                    UPDATE sessions SET status = 'completed', finished_at = NOW()
+                    WHERE room_id = :room_id AND student_id = :student_id AND status = 'ongoing'
+                ");
+                $stmtFinish->execute(['room_id' => $room_id, 'student_id' => $user_id]);
+            } catch (PDOException $e) {
+                error_log('[LEMBAR SUBMIT FINISH ERROR] ' . $e->getMessage());
             }
-
-            $json_data = json_encode([
-                'language' => $language, 
-                'code' => $submitted_code, 
-                'timestamp' => date('Y-m-d H:i:s')
-            ]);
-
-            $insert_query = "INSERT INTO telemetry_logs (session_id, flight_time_data) VALUES (:session_id, :flight_time_data)";
-            $stmt_insert = $pdo->prepare($insert_query);
-            $stmt_insert->execute([
-                'session_id' => $session_id,
-                'flight_time_data' => $json_data
-            ]);
-
-            $stmtUpdateSession = $pdo->prepare("UPDATE sessions SET status = 'completed', finished_at = NOW() WHERE id = :session_id");
-            $stmtUpdateSession->execute(['session_id' => $session_id]);
-
-            $message = "<script>alert('Kode berhasil disimpan & disubmit!'); window.location.href='../student/dashboard.php';</script>";
-        } catch (PDOException $e) {
-            $message = "<script>alert('Gagal menyimpan ke database: " . addslashes($e->getMessage()) . "');</script>";
         }
     } else {
-        $message = "<script>alert('Kode berhasil direkam!');</script>";
+        $message = "<script>alert('Kode berhasil dikirim (Mode Demo / Belum Login)!');</script>";
     }
 }
 ?>
@@ -87,500 +120,388 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Monaco Code Editor - <?= htmlspecialchars($project_title) ?></title>
+    <title>Lembar Pengerjaan</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Monaco Editor Loader CDN v0.33.0 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min/vs/loader.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        .font-mono { font-family: 'JetBrains Mono', monospace; }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #1e1e1e; }
-        ::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
+        body { font-family: 'Poppins', sans-serif; }
     </style>
 </head>
-<body class="bg-[#1e1e1e] text-[#cccccc] h-screen flex flex-col overflow-hidden select-none">
+<body class="bg-[#B08D8D] h-screen flex flex-col p-6 overflow-hidden">
 
     <?php echo $message; ?>
 
-    <!-- VS CODE WINDOW TITLE BAR -->
-    <div class="bg-[#3c3c3c] text-[#cccccc] h-14 px-6 flex justify-between items-center text-sm border-b border-[#2d2d2d] select-none shadow-md">
-        <div class="flex items-center gap-3">
-            <span class="inline-block w-3 h-3 rounded-full bg-red-500"></span>
-            <span class="inline-block w-3 h-3 rounded-full bg-yellow-500"></span>
-            <span class="inline-block w-3 h-3 rounded-full bg-green-500"></span>
-            <span class="font-bold text-base text-white tracking-wide ml-2">Code Workspace — <?= htmlspecialchars($project_title) ?></span>
-        </div>
-        
-        <!-- INFORMASI DURASI, TANGGAL & COUNTDOWN TIMER -->
-        <div class="flex items-center gap-4 text-gray-300 font-medium text-xs">
-            <!-- Informasi Total Durasi -->
-            <div class="hidden sm:flex items-center gap-1.5 bg-[#2d2d2d] px-3 py-1.5 rounded border border-[#444]">
-                <span class="text-gray-400">⏱️ Durasi:</span>
-                <span class="font-mono font-bold text-white"><?= $duration_minutes ?> Menit</span>
-            </div>
-
-            <!-- Countdown Timer -->
-            <div class="flex items-center gap-2 bg-[#2d2d2d] px-3 py-1.5 rounded border border-[#444]">
-                <span class="text-gray-400">⏳ Sisa Waktu:</span>
-                <span id="countdown-timer" class="font-mono font-bold text-yellow-400 text-sm">--:--:--</span>
-            </div>
-
-            <!-- Tanggal -->
-            <div class="hidden md:flex items-center gap-2 text-gray-400">
-                <span>📅 <span id="current-date"></span></span>
-            </div>
+    <!-- OVERLAY: Wajib klik dulu supaya browser mengizinkan Fullscreen API -->
+    <div id="start-overlay" class="fixed inset-0 z-50 bg-black/80 flex items-center justify-center px-6">
+        <div class="bg-[#E0E0E0] rounded-2xl shadow-2xl p-8 max-w-md w-full text-center">
+            <h1 class="text-xl font-bold text-gray-900 mb-2">Siap Memulai Ujian?</h1>
+            <p class="text-sm text-gray-600 mb-6">
+                Ujian akan berjalan dalam mode layar penuh. Berpindah tab, keluar fullscreen, atau
+                menutup halaman ini akan dicatat sebagai pelanggaran. Setelah
+                <span class="text-red-600 font-semibold">3 kali</span> pelanggaran, atau jika Anda
+                menutup halaman ini, ujian otomatis <span class="text-red-600 font-semibold">gugur</span>
+                dan tidak bisa dibuka lagi.
+            </p>
+            <button id="start-btn" class="bg-red-600 hover:bg-red-700 active:scale-95 text-white font-semibold px-6 py-3 rounded-xl w-full transition-all">
+                Mulai Ujian (Fullscreen)
+            </button>
         </div>
     </div>
 
-    <!-- WORKSPACE UTAMA (FORM) -->
-    <form id="code-form" method="POST" class="flex-1 flex overflow-hidden">
+    <!-- WARNING BANNER: muncul saat pelanggaran terdeteksi -->
+    <div id="violation-banner" class="hidden fixed top-0 left-0 right-0 z-40 bg-red-600 text-white text-sm font-semibold text-center py-2.5 px-4">
+        <span id="violation-text">Pelanggaran terdeteksi.</span>
+        <span id="violation-count-wrap"> (<span id="violation-count">0</span>/3)</span>
+    </div>
 
-        <!-- Hidden inputs untuk menangkap bahasa dan kode editor saat submit -->
-        <input type="hidden" name="language" id="language-hidden" value="python">
-        <input type="hidden" name="code_input" id="hidden_code_input">
+    <!-- Container Utama -->
+    <div class="bg-[#E0E0E0] rounded-2xl shadow-2xl flex-1 flex flex-col overflow-hidden">
 
-        <!-- KIRI: SIDEBAR (EXPLORER & CATATAN PROJECT) -->
-        <div class="w-80 bg-[#252526] border-r border-[#333333] flex flex-col select-none">
-            
-            <!-- Sidebar Tab Toggle Header -->
-            <div class="bg-[#2d2d2d] flex border-b border-[#333333] text-[11px] font-bold">
-                <button type="button" onclick="switchSidebarTab('explorer')" id="tab-btn-explorer" class="flex-1 py-2 px-3 text-center text-white bg-[#252526] border-t-2 border-[#007acc] transition-all">📁 FILES</button>
-                <button type="button" onclick="switchSidebarTab('notes')" id="tab-btn-notes" class="flex-1 py-2 px-3 text-center text-gray-400 hover:text-white transition-all">📝 CATATAN</button>
+        <!-- HEADER BAR (Nama Siswa & Timer) -->
+        <div class="flex justify-between items-center px-8 py-4 border-b border-gray-300">
+            <div class="font-bold text-lg tracking-wider text-black">
+                NAMA: <span class="font-normal text-gray-800"><?= htmlspecialchars($user_email) ?> (<?= htmlspecialchars($identity_number) ?>)</span>
             </div>
 
-            <!-- PANEL 1: PROJECT EXPLORER -->
-            <div id="sidebar-panel-explorer" class="flex-1 flex flex-col overflow-hidden">
-                <div class="px-4 py-2.5 text-[11px] font-bold tracking-wider text-gray-400 uppercase flex justify-between items-center border-b border-[#2d2d2d]">
-                    <span>EXPLORER</span>
-                    <button type="button" onclick="addNewFilePrompt()" class="hover:text-white text-gray-400 text-sm font-bold" title="New File">+</button>
-                </div>
-
-                <!-- File Tree Explorer -->
-                <div class="flex-1 overflow-y-auto p-2 text-xs">
-                    <div class="mb-3">
-                        <div class="text-gray-300 font-semibold px-2 py-1 flex items-center gap-1.5 cursor-pointer">
-                            <span>▼</span> 📁 <span>PROJECT_ROOT</span>
-                        </div>
-                        <div class="pl-4 space-y-1 mt-1" id="file-list-container">
-                            <div id="file-solution.py" class="text-blue-400 bg-[#37373d] px-2 py-1 rounded flex items-center gap-1.5 cursor-pointer" onclick="switchFile('solution.py')">
-                                <span>📄</span> <span class="file-item-name">solution.py</span>
-                            </div>
-                            <div id="file-Main.java" class="text-gray-400 hover:bg-[#2a2d2e] px-2 py-1 rounded flex items-center gap-1.5 cursor-pointer" onclick="switchFile('Main.java')">
-                                <span>📄</span> <span class="file-item-name">Main.java</span>
-                            </div>
-                            <div id="file-script.js" class="text-gray-400 hover:bg-[#2a2d2e] px-2 py-1 rounded flex items-center gap-1.5 cursor-pointer" onclick="switchFile('script.js')">
-                                <span>📄</span> <span class="file-item-name">script.js</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Informasi Editor -->
-                    <div class="border-t border-[#333333] pt-3 mt-3 px-1">
-                        <p class="font-semibold text-gray-200 mb-2">⚙️ Informasi Editor:</p>
-                        <div class="text-gray-400 space-y-2 text-[11px] leading-relaxed">
-                            <p>1. Mendukung Auto-indent, autocomplete, & syntax highlighting.</p>
-                            <p>2. Gunakan terminal di bawah untuk menguji baris kode.</p>
-                            <div class="bg-[#1e1e1e] p-2 rounded border border-[#333333] font-mono text-[10px] text-green-400">
-                                > Monaco VS Code Engine v0.33
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- PANEL 2: CATATAN & DESKRIPSI PROJECT -->
-            <div id="sidebar-panel-notes" class="flex-1 flex flex-col overflow-y-auto p-4 text-xs space-y-3 hidden">
-                <div class="text-sm font-bold text-white border-b border-[#333] pb-2">
-                    <?= htmlspecialchars($project_title) ?>
-                </div>
-                <div>
-                    <span class="text-[10px] bg-blue-900 text-blue-200 px-2 py-0.5 rounded font-mono uppercase">Deskripsi Project</span>
-                    <div class="text-gray-300 mt-2 leading-relaxed whitespace-pre-line text-xs bg-[#1e1e1e] p-3 rounded border border-[#333]">
-                        <?= nl2br(htmlspecialchars($project_description)) ?>
-                    </div>
-                </div>
-                <div>
-                    <span class="text-[10px] bg-emerald-900 text-emerald-200 px-2 py-0.5 rounded font-mono uppercase">Catatan / Instruksi</span>
-                    <div class="text-emerald-300 font-mono mt-2 leading-relaxed whitespace-pre-wrap text-xs bg-[#1e1e1e] p-3 rounded border border-[#333]">
-                        <?= htmlspecialchars($question_text) ?>
-                    </div>
-                </div>
-            </div>
-
-            <!-- User Footer Info -->
-            <div class="p-4 bg-[#181818] border-t-2 border-[#333333] flex flex-col justify-between gap-2 shadow-2xl">
-                <div class="text-gray-400 text-xs font-bold tracking-wider uppercase flex justify-between items-center">
-                    <span>USER SESSION:</span>
-                    <span class="w-2.5 h-2.5 rounded-full bg-green-500" title="Connected"></span>
-                </div>
-                <div class="font-bold text-white text-base tracking-wide truncate"><?= htmlspecialchars($user_name) ?></div>
-                <div class="text-gray-300 font-mono text-xs font-semibold tracking-wider bg-[#222222] px-2.5 py-1 rounded border border-[#333]"><?= htmlspecialchars($identity_number) ?></div>
+            <div class="font-bold text-lg tracking-wider text-black">
+                TIMER <span id="timer-display" class="text-red-600 font-mono ml-2">00:00:00</span>
             </div>
         </div>
 
-        <!-- TENGAH: MONACO CODE EDITOR AREA + TOP CONTROLS -->
-        <div class="flex-1 flex flex-col bg-[#1e1e1e] overflow-hidden relative">
+        <!-- FORM PENGERJAAN 3 KOLOM -->
+        <form id="code-form" method="POST" class="flex-1 grid grid-cols-3 gap-6 p-6 overflow-hidden">
             
-            <!-- Editor Tabs Bar -->
-            <div class="bg-[#2d2d2d] h-11 flex items-center justify-between px-4 border-b border-[#252526]">
-                <div class="flex items-center gap-2">
-                    <div class="bg-[#1e1e1e] text-white px-4 py-2 text-xs border-t-2 border-[#007acc] flex items-center gap-2">
-                        <span>📄</span> <span id="active-filename">solution.py</span>
-                        <span id="detected-lang-badge" class="ml-2 text-[10px] bg-[#0e639c] text-white px-1.5 py-0.5 rounded uppercase font-mono">python</span>
-                    </div>
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="flex items-center gap-2">
-                    <button type="button" onclick="toggleAndRunCode()" class="bg-[#388a34] hover:bg-[#469542] active:scale-95 text-white font-medium px-3.5 py-1.5 rounded text-xs transition-all flex items-center gap-1.5 shadow">
-                        ▶ Run Code
-                    </button>
-                    <button type="submit" name="submit_code" onclick="return prepareSubmit()" class="bg-[#0e639c] hover:bg-[#1177bb] active:scale-95 text-white font-medium px-3.5 py-1.5 rounded text-xs transition-all flex items-center gap-1.5 shadow">
-                        💾 Save & Submit
-                    </button>
-                    <button type="button" onclick="toggleTerminal()" class="bg-[#333333] hover:bg-[#444] text-gray-300 px-2.5 py-1.5 rounded text-xs transition-all border border-[#555]" title="Toggle Terminal">
-                        💻 Terminal
-                    </button>
+            <!-- KOLOM 1: Deskripsi Soal (Kiri) -->
+            <div class="bg-white rounded-xl p-6 flex flex-col justify-start overflow-y-auto shadow-sm border border-gray-200">
+                <h2 class="text-xl font-bold mb-4 text-gray-800 border-b pb-2"><?= htmlspecialchars($exam_title) ?></h2>
+                <div class="text-gray-600 space-y-3 text-sm">
+                    <p><strong>Deskripsi Soal:</strong></p>
+                    <p>Pilihlah bahasa pemrograman yang ingin digunakan di atas editor kode. Buatlah program yang mencetak output sesuai spesifikasi.</p>
+                    <p><strong>Contoh Perintah Output:</strong></p>
+                    <ul class="list-disc list-inside space-y-1 text-xs font-mono bg-gray-50 p-3 rounded-lg border">
+                        <li><strong>Python:</strong> <code>print("Hello World")</code></li>
+                        <li><strong>PHP:</strong> <code>&lt;?php echo "Hello World";</code></li>
+                        <li><strong>C++:</strong> <code>std::cout &lt;&lt; "Hello";</code></li>
+                        <li><strong>Java:</strong> <code>System.out.println("Hello");</code></li>
+                    </ul>
                 </div>
             </div>
 
-            <!-- CONTAINER UTAMA MONACO EDITOR -->
-            <div id="monaco-editor-container" class="flex-1 w-full h-full"></div>
+            <!-- KOLOM 2: Editor Kodingan (Tengah) -->
+            <div class="bg-white rounded-xl flex flex-col overflow-hidden shadow-sm border border-gray-200">
+                <div class="bg-gray-100 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
+                    <span class="text-xs font-semibold text-gray-500 tracking-wider">CODE EDITOR</span>
+                    
+                    <!-- Dropdown Pilihan Bahasa Pemrograman -->
+                    <select name="language" id="language-select" onchange="changeLanguageTemplate()" class="text-xs bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+                        <option value="python">Python 3</option>
+                        <option value="javascript">JavaScript (Node.js)</option>
+                        <option value="php">PHP</option>
+                        <option value="cpp">C++</option>
+                        <option value="java">Java</option>
+                        <option value="c">C</option>
+                    </select>
+                </div>
+                
+                <textarea 
+                    name="code_input" 
+                    id="code_input" 
+                    class="w-full h-full p-4 font-mono text-sm focus:outline-none resize-none bg-white text-gray-800" 
+                    placeholder="Tuliskan kode program di sini..."
+                    required
+                ></textarea>
+            </div>
 
-            <!-- TERMINAL BAWAH -->
-            <div id="terminal-container" class="h-52 bg-[#181818] border-t border-[#333333] flex flex-col font-mono text-xs hidden transition-all">
-                <!-- Terminal Header -->
-                <div class="bg-[#2d2d2d] px-3 py-1.5 flex justify-between items-center text-[11px] text-gray-300 border-b border-[#333333]">
-                    <span class="font-bold flex items-center gap-1">💻 INTEGRATED TERMINAL</span>
-                    <div class="flex items-center gap-3">
-                        <span id="terminal-status" class="text-yellow-400">Idle</span>
-                        <button type="button" onclick="toggleTerminal()" class="text-gray-400 hover:text-white font-bold text-sm">✕</button>
+            <!-- KOLOM 3: Terminal & Tombol Submit (Kanan) -->
+            <div class="bg-white rounded-xl p-5 flex flex-col relative justify-between shadow-sm border border-gray-200">
+                
+                <!-- Tombol Submit Merah -->
+                <div class="flex justify-end mb-4">
+                    <button 
+                        type="submit" 
+                        name="submit_code" 
+                        class="bg-red-600 hover:bg-red-700 active:scale-95 text-white font-semibold px-8 py-2.5 rounded-xl shadow-md transition-all text-sm tracking-wide"
+                    >
+                        Submit
+                    </button>
+                </div>
+
+                <!-- Area Terminal Multi-Language Compiler -->
+                <div class="bg-black text-green-400 font-mono text-xs p-4 rounded-xl flex-1 overflow-hidden flex flex-col justify-between border border-gray-800">
+                    
+                    <!-- Terminal Output Box -->
+                    <div id="terminal-output" class="flex-1 overflow-y-auto space-y-1 mb-2 pr-1">
+                        <p class="text-gray-500">// Terminal Output</p>
+                        <p class="text-gray-400">> System Ready...</p>
+                    </div>
+
+                    <!-- Optional Input untuk stdin (Program Interaktif) -->
+                    <div class="mb-2">
+                        <input type="text" id="stdin-input" placeholder="Input variabel/stdin (opsional)..." class="w-full bg-gray-900 text-gray-300 border border-gray-700 rounded px-2 py-1 text-xs focus:outline-none focus:border-green-500">
+                    </div>
+
+                    <!-- Footer Terminal Bar -->
+                    <div class="pt-2 border-t border-gray-800 flex justify-between items-center text-gray-400">
+                        <span id="terminal-status">Status: Idle</span>
+                        <button type="button" onclick="runCodeMultiLanguage()" id="btn-run" class="text-white bg-gray-800 hover:bg-gray-700 active:scale-95 px-4 py-1.5 rounded-lg text-xs font-sans transition-all border border-gray-700 flex items-center gap-1">
+                            Run Code
+                        </button>
                     </div>
                 </div>
 
-                <!-- Terminal Output Content -->
-                <div id="terminal-output" class="flex-1 p-3 overflow-y-auto space-y-1 text-gray-300 text-[11px]">
-                    <p class="text-gray-500">// Compiler sandbox ready. Press 'Run Code' to execute.</p>
-                </div>
-
-                <!-- Stdin Input & Footer -->
-                <div class="p-2 bg-[#252526] border-t border-[#333333] flex items-center gap-2">
-                    <input type="text" id="stdin-input" placeholder="Masukkan stdin (opsional)..." class="flex-1 bg-[#1e1e1e] text-white border border-[#444] rounded px-2 py-1 text-[11px] focus:outline-none focus:border-[#007acc]">
-                    <button type="button" onclick="runCodeAdvanced()" class="bg-[#333333] hover:bg-[#444444] text-white px-3 py-1 rounded text-[11px] transition-all border border-[#555]">
-                        Execute
-                    </button>
-                </div>
             </div>
 
-        </div>
+        </form>
 
-    </form>
+    </div>
 
-    <!-- SCRIPT UTAMA EDITOR & COUNTDOWN TIMER -->
+    <!-- SCRIPT TIMER & COMPILER ENGINE -->
     <script>
-        // --- 0. TANGGAL & COUNTDOWN TIMER ---
-        // Tampilkan tanggal hari ini
-        const options = { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' };
-        document.getElementById('current-date').textContent = new Date().toLocaleDateString('id-ID', options);
+        // --- 1. SCRIPT TIMER ---
+        let totalSeconds = <?= $duration_minutes * 60 ?>;
+        const timerDisplay = document.getElementById('timer-display');
 
-        // Countdown Timer berdasarkan durasi dari database (dalam menit)
-        let totalSeconds = <?= $duration_minutes ?> * 60;
-        
-        function updateCountdown() {
-            const timerDisplay = document.getElementById('countdown-timer');
-            if (totalSeconds <= 0) {
-                timerDisplay.textContent = "Waktu Habis!";
-                timerDisplay.className = "font-mono font-bold text-red-500 text-sm animate-pulse";
-                return;
-            }
-
+        function updateTimer() {
             let hours = Math.floor(totalSeconds / 3600);
             let minutes = Math.floor((totalSeconds % 3600) / 60);
             let seconds = totalSeconds % 60;
 
-            timerDisplay.textContent = 
-                String(hours).padStart(2, '0') + ":" + 
-                String(minutes).padStart(2, '0') + ":" + 
-                String(seconds).padStart(2, '0');
+            hours = hours < 10 ? '0' + hours : hours;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            seconds = seconds < 10 ? '0' + seconds : seconds;
 
-            totalSeconds--;
-        }
+            timerDisplay.textContent = `${hours}:${minutes}:${seconds}`;
 
-        setInterval(updateCountdown, 1000);
-        updateCountdown();
-
-        // --- 1. FUNGSI SWITCH TAB SIDEBAR (FILES / NOTES) ---
-        function switchSidebarTab(tabName) {
-            const explorerPanel = document.getElementById('sidebar-panel-explorer');
-            const notesPanel = document.getElementById('sidebar-panel-notes');
-            const explorerBtn = document.getElementById('tab-btn-explorer');
-            const notesBtn = document.getElementById('tab-btn-notes');
-
-            if (tabName === 'explorer') {
-                explorerPanel.classList.remove('hidden');
-                notesPanel.classList.add('hidden');
-                explorerBtn.className = "flex-1 py-2 px-3 text-center text-white bg-[#252526] border-t-2 border-[#007acc] transition-all";
-                notesBtn.className = "flex-1 py-2 px-3 text-center text-gray-400 hover:text-white transition-all";
+            if (totalSeconds > 0) {
+                totalSeconds--;
             } else {
-                explorerPanel.classList.add('hidden');
-                notesPanel.classList.remove('hidden');
-                notesBtn.className = "flex-1 py-2 px-3 text-center text-white bg-[#252526] border-t-2 border-[#007acc] transition-all";
-                explorerBtn.className = "flex-1 py-2 px-3 text-center text-gray-400 hover:text-white transition-all";
+                if (typeof isFinishing !== 'undefined') { isFinishing = true; }
+                alert("Waktu habis! Kode Anda disubmit otomatis.");
+                document.getElementById('code-form').submit();
             }
         }
+        setInterval(updateTimer, 1000);
 
-        // --- 2. INISIALISASI MONACO EDITOR ---
-        let editor;
-        const extensionMap = {
-            'py': 'python', 'rb': 'ruby', 'js': 'javascript', 
-            'php': 'php', 'java': 'java', 'cpp': 'cpp', 'c': 'c', 'go': 'go'
-        };
-
+        // --- 2. TEMPLATE KODE DEFAULT SAAT BAHASA DIUBAH ---
         const templates = {
             python: 'print("Hello World")',
-            ruby: 'puts "Hello World"',
-            javascript: 'function hitung(a, b) {\n    return a + b;\n}\n\nlet hasil = hitung(1, 1);\nconsole.log(hasil);',
+            javascript: 'console.log("Hello World");',
             php: '<?php\necho "Hello World";',
             cpp: '#include <iostream>\n\nint main() {\n    std::cout << "Hello World";\n    return 0;\n}',
             java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello World");\n    }\n}',
             c: '#include <stdio.h>\n\nint main() {\n    printf("Hello World");\n    return 0;\n}'
         };
 
-        let fileStorage = {
-            'solution.py': templates.python,
-            'Main.java': templates.java,
-            'script.js': templates.javascript
-        };
-
-        let currentActiveFile = 'solution.py';
-
-        try {
-            require.config({ 
-                paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.33.0/min' },
-                waitSeconds: 15
-            });
-            
-            require(['vs/editor/editor.main'], function() {
-                editor = monaco.editor.create(document.getElementById('monaco-editor-container'), {
-                    value: fileStorage['solution.py'],
-                    language: 'python',
-                    theme: 'vs-dark',
-                    automaticLayout: true,
-                    fontSize: 14,
-                    fontFamily: 'JetBrains Mono, monospace',
-                    minimap: { enabled: true },
-                    scrollBeyondLastLine: false,
-                    roundedSelection: false,
-                    cursorBlinking: 'smooth'
-                });
-
-                editor.onDidChangeModelContent(function() {
-                    fileStorage[currentActiveFile] = editor.getValue();
-                });
-            }, function(err) {
-                console.warn("Gagal memuat Monaco Editor CDN. Mengaktifkan fallback textarea.");
-                activateFallbackTextarea();
-            });
-        } catch (e) {
-            activateFallbackTextarea();
+        function changeLanguageTemplate() {
+            const lang = document.getElementById('language-select').value;
+            document.getElementById('code_input').value = templates[lang] || '';
         }
+        
+        // Load template default pertama kali
+        changeLanguageTemplate();
 
-        function activateFallbackTextarea() {
-            const container = document.getElementById('monaco-editor-container');
-            container.innerHTML = `<textarea id="fallback-ta" class="w-full h-full bg-[#1e1e1e] text-[#cccccc] p-4 font-mono text-sm focus:outline-none resize-none"></textarea>`;
-            const ta = document.getElementById('fallback-ta');
-            ta.value = fileStorage[currentActiveFile];
-            ta.addEventListener('input', function() {
-                fileStorage[currentActiveFile] = ta.value;
-            });
-        }
+        // --- RUN CODE MULTI-LANGUAGE (HYBRID ENGINE) ---
+function runCodeMultiLanguage() {
+    const code = document.getElementById('code_input').value;
+    const lang = document.getElementById('language-select').value;
+    const stdin = document.getElementById('stdin-input').value;
+    
+    const terminalOutput = document.getElementById('terminal-output');
+    const terminalStatus = document.getElementById('terminal-status');
 
-        function detectLanguage(filename) {
-            let ext = filename.split('.').pop().toLowerCase();
-            return extensionMap[ext] || 'python';
-        }
+    terminalOutput.innerHTML = `<p class="text-gray-500">// Terminal Output (${lang.toUpperCase()})</p>`;
 
-        function switchFile(filename) {
-            if (editor) {
-                fileStorage[currentActiveFile] = editor.getValue();
-            } else {
-                const ta = document.getElementById('fallback-ta');
-                if(ta) fileStorage[currentActiveFile] = ta.value;
-            }
+    if (code.trim() === "") {
+        terminalOutput.innerHTML += `<p class="text-yellow-400">> Warning: Kode program masih kosong!</p>`;
+        terminalStatus.textContent = "Status: Warning";
+        return;
+    }
 
-            document.querySelectorAll('#file-list-container > div').forEach(el => {
-                el.className = "text-gray-400 hover:bg-[#2a2d2e] px-2 py-1 rounded flex items-center gap-1.5 cursor-pointer";
-            });
-            let activeEl = document.getElementById('file-' + filename);
-            if (activeEl) {
-                activeEl.className = "text-blue-400 bg-[#37373d] px-2 py-1 rounded flex items-center gap-1.5 cursor-pointer";
-            }
+    terminalStatus.textContent = "Status: Executing...";
 
-            currentActiveFile = filename;
-            document.getElementById('active-filename').textContent = filename;
-            
-            let detectedLang = detectLanguage(filename);
-            document.getElementById('language-hidden').value = detectedLang;
-            document.getElementById('detected-lang-badge').textContent = detectedLang;
+    let logs = [];
+    
+    // 1. EKSEKUSI PYTHON / JAVASCRIPT / PHP LOKAL
+    try {
+        if (lang === 'python') {
+            // Parser Python Sederhana ke Output Terminal
+            let lines = code.split('\n');
+            let executed = false;
 
-            if (fileStorage[filename] === undefined) {
-                fileStorage[filename] = templates[detectedLang] || '// Tulis kode Anda di sini';
-            }
-
-            if (editor) {
-                let model = editor.getModel();
-                monaco.editor.setModelLanguage(model, detectedLang);
-                editor.setValue(fileStorage[filename]);
-            } else {
-                const ta = document.getElementById('fallback-ta');
-                if(ta) ta.value = fileStorage[filename];
-            }
-        }
-
-        function addNewFilePrompt() {
-            let fileName = prompt("Masukkan nama file baru (contoh: Main.java, solution.cpp, script.py):");
-            if (fileName && fileName.trim() !== "") {
-                let cleanName = fileName.trim();
-                let detectedLang = detectLanguage(cleanName);
-
-                if (fileStorage[cleanName] === undefined) {
-                    fileStorage[cleanName] = templates[detectedLang] || '// Tulis kode Anda di sini';
-                }
-
-                const container = document.getElementById('file-list-container');
-                let newFileDiv = document.createElement('div');
-                newFileDiv.id = 'file-' + cleanName;
-                newFileDiv.className = "text-gray-400 hover:bg-[#2a2d2e] px-2 py-1 rounded flex items-center gap-1.5 cursor-pointer";
-                newFileDiv.innerHTML = `<span>📄</span> <span>${cleanName}</span>`;
-                newFileDiv.onclick = function() { switchFile(cleanName); };
-                container.appendChild(newFileDiv);
-                
-                switchFile(cleanName);
-            }
-        }
-
-        // --- 3. PREPARE SUBMIT ---
-        function prepareSubmit() {
-            let codeVal = "";
-            if (editor) {
-                codeVal = editor.getValue();
-            } else {
-                const ta = document.getElementById('fallback-ta');
-                codeVal = ta ? ta.value : "";
-            }
-
-            if (confirm('Yakin ingin menyimpan dan mensubmit perubahan kode ini?')) {
-                document.getElementById('hidden_code_input').value = codeVal;
-                return true;
-            }
-            return false;
-        }
-
-        function toggleTerminal() {
-            const term = document.getElementById('terminal-container');
-            term.classList.toggle('hidden');
-            if(editor) editor.layout();
-        }
-
-        function toggleAndRunCode() {
-            const term = document.getElementById('terminal-container');
-            if (term.classList.contains('hidden')) {
-                term.classList.remove('hidden');
-            }
-            if(editor) editor.layout();
-            runCodeAdvanced();
-        }
-
-        // --- 4. ADVANCED RUNTIME EMULATOR ---
-        async function runCodeAdvanced() {
-            let code = "";
-            if (editor) {
-                code = editor.getValue();
-            } else {
-                const ta = document.getElementById('fallback-ta');
-                code = ta ? ta.value : "";
-            }
-
-            let lang = document.getElementById('language-hidden').value;
-            let stdinVal = document.getElementById('stdin-input').value;
-            
-            const terminalOutput = document.getElementById('terminal-output');
-            const terminalStatus = document.getElementById('terminal-status');
-
-            terminalOutput.innerHTML = `<p class="text-gray-500">// Compiling & executing ${lang.toUpperCase()} source code...</p>`;
-            terminalStatus.textContent = "Compiling...";
-
-            if (code.trim() === "") {
-                setTimeout(() => {
-                    terminalOutput.innerHTML = `<p class="text-red-400">Error: Source code is empty.</p>`;
-                    terminalStatus.textContent = "Failed";
-                }, 300);
-                return;
-            }
-
-            setTimeout(() => {
-                let outputText = "";
-
-                if (lang === 'javascript') {
-                    try {
-                        let logs = [];
-                        const originalConsoleLog = console.log;
-                        
-                        console.log = function(...args) {
-                            logs.push(args.map(arg => typeof arg === 'object' ? JSON.stringify(arg, null, 2) : arg).join(' '));
-                        };
-                        
-                        let runFunc = new Function(code);
-                        runFunc();
-
-                        console.log = originalConsoleLog; 
-
-                        if (logs.length > 0) {
-                            outputText = logs.join('\n');
-                        }
-                    } catch (err) {
-                        terminalOutput.innerHTML = `
-                            <p class="text-red-400 font-bold">RuntimeError: ${escapeHtml(err.message)}</p>
-                            <p class="text-gray-500 text-[10px]">Process finished with exit code 1</p>
-                        `;
-                        terminalStatus.textContent = "Runtime Error";
-                        terminalOutput.scrollTop = terminalOutput.scrollHeight;
-                        return;
+            lines.forEach(line => {
+                let trimmed = line.trim();
+                // Deteksi print(...) pada Python
+                let match = trimmed.match(/^print\((.*)\)$/);
+                if (match) {
+                    let content = match[1].trim();
+                    // Menghilangkan kutip jika string
+                    if ((content.startsWith('"') && content.endsWith('"')) || (content.startsWith("'") && content.endsWith("'"))) {
+                        content = content.slice(1, -1);
+                    } else {
+                        // Jika berisi ekspresi matematika/variabel
+                        try { content = eval(content); } catch(e) {}
                     }
+                    logs.push(content);
+                    executed = true;
                 }
+            });
 
-                if (!outputText) {
-                    let match = code.match(/["']([^"']*)["']/);
-                    outputText = match ? match[1] : "Program executed successfully (no stdout output).";
+            if (!executed) {
+                logs.push("[Python Process Completed - No output printed]");
+            }
+        } 
+        else if (lang === 'javascript') {
+            const originalLog = console.log;
+            console.log = function(...args) {
+                logs.push(args.map(a => (typeof a === 'object' ? JSON.stringify(a) : a)).join(' '));
+            };
+            
+            let result = eval(code);
+            if (logs.length === 0 && result !== undefined) logs.push(result);
+            console.log = originalLog;
+        } 
+        else if (lang === 'php') {
+            // Simulated PHP Engine
+            let cleanCode = code.replace(/<\?php/g, '').replace(/\?>/g, '');
+            let lines = cleanCode.split('\n');
+            
+            lines.forEach(line => {
+                let trimmed = line.trim();
+                let matchEcho = trimmed.match(/^echo\s+(.*);?$/);
+                if (matchEcho) {
+                    let content = matchEcho[1].replace(/;$/, '').trim();
+                    if ((content.startsWith('"') && content.endsWith('"')) || (content.startsWith("'") && content.endsWith("'"))) {
+                        content = content.slice(1, -1);
+                    }
+                    logs.push(content);
                 }
-
-                if (stdinVal.trim() !== "") {
-                    outputText = `Input diterima: ${stdinVal}\n` + outputText;
-                }
-
-                terminalOutput.innerHTML = `
-                    <p class="text-gray-400">// Executing ${currentActiveFile}...</p>
-                    <pre class="text-green-400 whitespace-pre-wrap mt-1">${escapeHtml(outputText)}</pre>
-                    <p class="text-gray-500 text-[10px] mt-2">=== Process finished with exit code 0 (Time: 0.03s) ===</p>
-                `;
-                terminalStatus.textContent = "Success (0.03s)";
-                terminalOutput.scrollTop = terminalOutput.scrollHeight;
-            }, 400);
+            });
+        } 
+        else {
+            // Bahasa C, C++, Java Simulator Output
+            logs.push(`[${lang.toUpperCase()} Simulator]: Output berhasil diproses.`);
+            if (code.includes('cout') || code.includes('printf') || code.includes('println')) {
+                logs.push("Hello World");
+            }
         }
 
-        function escapeHtml(text) {
-            return text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+        // Tampilkan Hasil ke Terminal
+        logs.forEach(log => {
+            terminalOutput.innerHTML += `<p class="text-green-400">> ${log}</p>`;
+        });
+
+        if (stdin.trim() !== "") {
+            terminalOutput.innerHTML += `<p class="text-gray-400">> Stdin Input Used: ${stdin}</p>`;
         }
+
+        terminalOutput.innerHTML += `<p class="text-blue-400 font-semibold">> [Process Completed Successfully]</p>`;
+        terminalStatus.textContent = "Status: Success";
+
+    } catch (error) {
+        terminalOutput.innerHTML += `<p class="text-red-500 font-semibold">> Syntax Error: ${error.message}</p>`;
+        terminalStatus.textContent = "Status: Error";
+    }
+
+    terminalOutput.scrollTop = terminalOutput.scrollHeight;
+}
+    <!-- SCRIPT: PROTEKSI ANTI-KELUAR-TAB -->
+    <script>
+        const ROOM_ID        = <?= json_encode($room_id) ?>;
+        const CSRF_TOKEN     = <?= json_encode($_SESSION['csrf_token']) ?>;
+        const VIOLATION_URL  = '../../controllers/student/report_violation.php';
+        const LEAVE_URL      = '../../controllers/student/leave_exam.php';
+
+        let violationCount = 0;
+        let examStarted     = false;
+        let isFinishing      = false; // true saat submit resmi, supaya tidak ikut dianggap "keluar"
+
+        const overlay    = document.getElementById('start-overlay');
+        const banner     = document.getElementById('violation-banner');
+        const bannerText = document.getElementById('violation-text');
+        const countEl    = document.getElementById('violation-count');
+
+        function showBanner(msg) {
+            bannerText.textContent = msg;
+            banner.classList.remove('hidden');
+            setTimeout(() => banner.classList.add('hidden'), 4000);
+        }
+
+        async function reportViolation(reason) {
+            if (!examStarted || isFinishing) return;
+            try {
+                const res = await fetch(VIOLATION_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({ room_id: ROOM_ID, csrf_token: CSRF_TOKEN, reason })
+                });
+                const data = await res.json();
+                if (data.count !== undefined) {
+                    violationCount = data.count;
+                    countEl.textContent = violationCount;
+                }
+                if (data.forfeited) {
+                    isFinishing = true;
+                    alert('Ujian dinyatakan gugur karena terlalu banyak pelanggaran.');
+                    window.location.href = '../student/dashboard.php';
+                } else {
+                    showBanner(`Pelanggaran terdeteksi (${reason}). Percobaan ke-${violationCount} dari 3.`);
+                }
+            } catch (e) {
+                console.error('Gagal melapor pelanggaran', e);
+            }
+        }
+
+        // 1. Mulai ujian: wajib klik dulu (browser mewajibkan gesture user sebelum fullscreen diizinkan)
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            try {
+                await document.documentElement.requestFullscreen();
+            } catch (e) {
+                console.warn('Fullscreen ditolak/tidak didukung, ujian tetap lanjut tanpa fullscreen.', e);
+            }
+            overlay.classList.add('hidden');
+            examStarted = true;
+        });
+
+        // 2. Deteksi pindah tab / minimize / app switch
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                reportViolation('pindah tab / minimize');
+            }
+        });
+
+        // 3. Deteksi keluar dari mode fullscreen
+        document.addEventListener('fullscreenchange', () => {
+            if (examStarted && !isFinishing && !document.fullscreenElement) {
+                reportViolation('keluar fullscreen');
+            }
+        });
+
+        // 4. Cegah klik kanan & beberapa shortcut devtools (best effort, bukan jaminan mutlak)
+        document.addEventListener('contextmenu', (e) => { if (examStarted) e.preventDefault(); });
+        document.addEventListener('keydown', (e) => {
+            if (!examStarted) return;
+            const blocked = (e.key === 'F12') ||
+                             (e.ctrlKey && e.shiftKey && ['I', 'J', 'C'].includes(e.key)) ||
+                             (e.ctrlKey && e.key === 'u');
+            if (blocked) e.preventDefault();
+        });
+
+        // 5. Tutup tab / navigasi keluar / kembali (back) -> peringatan + gugurkan sesi via beacon
+        window.addEventListener('beforeunload', (e) => {
+            if (!examStarted || isFinishing) return;
+            const payload = new URLSearchParams({ room_id: ROOM_ID, csrf_token: CSRF_TOKEN }).toString();
+            navigator.sendBeacon(LEAVE_URL, new Blob([payload], { type: 'application/x-www-form-urlencoded' }));
+            e.preventDefault();
+            e.returnValue = 'Meninggalkan halaman ini akan menggugurkan ujian Anda. Yakin?';
+            return e.returnValue;
+        });
+
+        // 6. Submit resmi form ujian tidak boleh ikut ke-treat sebagai pelanggaran
+        document.getElementById('code-form').addEventListener('submit', () => {
+            isFinishing = true;
+        });
     </script>
 </body>
 </html>

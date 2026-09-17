@@ -1,27 +1,21 @@
--- migration_exam_lock.sql
--- Menambahkan dukungan status 'forfeited' (gugur) dan penghitung pelanggaran
--- pada tabel sessions, untuk fitur: siswa tidak boleh masuk lagi setelah
--- keluar/curang saat ujian berlangsung.
+-- migration_add_question_text.sql
+-- Menambahkan kolom question_text ke tabel rooms (naskah soal ujian),
+-- yang dibutuhkan oleh views/lecturer/create_room.php tapi belum ada di database.
 --
 -- Aman dijalankan berkali-kali. Jalankan lewat:
---   mysql -u root -p codeprocess_db < migration_exam_lock.sql
+--   mysql -u root -p codeprocess_db < migration_add_question_text.sql
 -- atau phpMyAdmin: pilih database -> tab SQL -> paste -> Kirim/Go
 
 USE codeprocess_db;
 
--- Perluas ENUM status agar mencakup 'forfeited'
-ALTER TABLE sessions
-    MODIFY COLUMN status ENUM('ongoing', 'completed', 'forfeited') DEFAULT 'ongoing';
-
--- Tambah kolom violation_count jika belum ada
 SET @col_exists := (
     SELECT COUNT(*) FROM information_schema.COLUMNS
-    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sessions' AND COLUMN_NAME = 'violation_count'
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'rooms' AND COLUMN_NAME = 'question_text'
 );
 SET @sql := IF(@col_exists = 0,
-    'ALTER TABLE sessions ADD COLUMN violation_count INT NOT NULL DEFAULT 0 AFTER score',
-    'SELECT "Kolom sessions.violation_count sudah ada, dilewati." AS info'
+    'ALTER TABLE rooms ADD COLUMN question_text LONGTEXT DEFAULT NULL AFTER description',
+    'SELECT "Kolom rooms.question_text sudah ada, dilewati." AS info'
 );
 PREPARE stmt FROM @sql; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
-SELECT 'Migrasi exam-lock selesai.' AS status;
+SELECT 'Migrasi question_text selesai.' AS status;

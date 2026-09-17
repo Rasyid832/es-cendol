@@ -77,7 +77,7 @@ try {
     }
 
     $_SESSION['active_room_id'] = $room['id'];
-    header("Location: ../../views/student/exam.php?room_id=" . $room['id']);
+    header("Location: ../../views/auth/lembar.php?room_id=" . $room['id']);
     exit();
 
 } catch (PDOException $e) {

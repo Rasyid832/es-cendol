@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS rooms (
     duration INT NOT NULL DEFAULT 60,  -- Durasi Ujian (menit)
     start_time DATETIME NULL,  
     description TEXT DEFAULT NULL,          -- Deskripsi / Catatan Tambahan
+    question_text LONGTEXT DEFAULT NULL,    -- Naskah soal ujian / studi kasus / instruksi coding
     status ENUM('active', 'inactive', 'archived') DEFAULT 'active', -- Status Room (Aktif, Nonaktif, Arsip)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
