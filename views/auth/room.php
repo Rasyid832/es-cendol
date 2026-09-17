@@ -27,14 +27,18 @@ $success = false;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    $roomCode = trim(preg_replace('/\s+/', ' ', $_POST["roomCode"] ?? ""));
-    $roomPassword = trim(preg_replace('/\s+/', '', $_POST["roomPassword"] ?? ""));
+    $roomCode = trim($_POST["roomCode"] ?? "");
+    $roomPassword = trim($_POST["roomPassword"] ?? "");
 
     if (empty($roomCode) || empty($roomPassword)) {
         $message = "Kode room dan password wajib diisi.";
     } else {
         try {
-            $stmt = $pdo->prepare("SELECT * FROM rooms WHERE LOWER(TRIM(room_code)) = LOWER(:room_code) LIMIT 1");
+            $stmt = $pdo->prepare("
+                SELECT * FROM rooms 
+                WHERE LOWER(REPLACE(TRIM(room_code), ' ', '')) = LOWER(REPLACE(:room_code, ' ', '')) 
+                LIMIT 1
+            ");
             $stmt->execute(['room_code' => $roomCode]);
             $room = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -55,9 +59,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     $studentId = $_SESSION['user_id'];
                     $roomId    = $room['id'];
 
-                    // Cek sesi TERAKHIR siswa ini di room tsb, apapun statusnya
-                    // (sebelumnya cuma cek status 'ongoing', jadi siswa yang sudah
-                    // gugur/forfeited atau sudah completed bisa bikin sesi baru lagi)
                     $stmtCheck = $pdo->prepare("SELECT id, status FROM sessions WHERE room_id = :room_id AND student_id = :student_id ORDER BY id DESC LIMIT 1");
                     $stmtCheck->execute(['room_id' => $roomId, 'student_id' => $studentId]);
                     $existingSession = $stmtCheck->fetch(PDO::FETCH_ASSOC);
@@ -67,7 +68,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                     } elseif ($existingSession && $existingSession['status'] === 'completed') {
                         $message = "Anda sudah menyelesaikan/mengumpulkan ujian ini sebelumnya. Tidak bisa bergabung lagi.";
                     } else {
-                        // Belum pernah join sama sekali, ATAU masih 'ongoing' (lanjutkan sesi yang sama)
                         if (!$existingSession) {
                             $stmtInsert = $pdo->prepare("INSERT INTO sessions (room_id, student_id, status) VALUES (:room_id, :student_id, 'ongoing')");
                             $stmtInsert->execute(['room_id' => $roomId, 'student_id' => $studentId]);
@@ -206,7 +206,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
         }
 
-        /* --- TOMBOL SUBMIT --- */
         .btn-submit {
             width: 100%;
             padding: 13px;
@@ -267,7 +266,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             border: 1px solid #fecaca;
         }
 
-        /* --- FOOTER ATAS KEMBALI --- */
         .back-link {
             display: block;
             text-align: center;
@@ -297,7 +295,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             <span class="brand-text">CodeProcess</span>
         </div>
 
-        <!-- Kartu Utama -->
         <div class="card">
             <div class="card-header">
                 <h1>Masuk Room Ujian</h1>
@@ -307,7 +304,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
             <form id="joinForm" method="POST">
                 <div class="input-group">
                     <label for="roomCode">Kode Room</label>
-                    <input type="text" id="roomCode" name="roomCode" placeholder="Contoh: ROOM-HRRU" autocomplete="off" required>
+                    <input type="text" id="roomCode" name="roomCode" value="<?= htmlspecialchars($_POST['roomCode'] ?? '') ?>" placeholder="Contoh: ROOM-HRRU" autocomplete="off" required>
                 </div>
 
                 <div class="input-group">

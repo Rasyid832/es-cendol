@@ -20,27 +20,12 @@ if (!$room_id) {
 }
 
 try {
-    $stmt_room = $pdo->prepare("SELECT * FROM exam_rooms WHERE id = :id LIMIT 1");
-    $stmt_room->execute(['id' => $room_id]);
+    $stmt_room = $pdo->prepare("SELECT * FROM rooms WHERE id = :id OR room_code = :code LIMIT 1");
+    $stmt_room->execute([
+        'id' => $room_id,
+        'code' => $room_id
+    ]);
     $room = $stmt_room->fetch(PDO::FETCH_ASSOC);
-
-    if (!$room) {
-        $stmt_room = $pdo->prepare("SELECT * FROM rooms WHERE id = :id LIMIT 1");
-        $stmt_room->execute(['id' => $room_id]);
-        $room = $stmt_room->fetch(PDO::FETCH_ASSOC);
-    }
-
-    if (!$room) {
-        $stmt_room = $pdo->prepare("SELECT * FROM exam_rooms WHERE room_code = :code LIMIT 1");
-        $stmt_room->execute(['code' => $room_id]);
-        $room = $stmt_room->fetch(PDO::FETCH_ASSOC);
-    }
-
-    if (!$room) {
-        $stmt_room = $pdo->prepare("SELECT * FROM rooms WHERE room_code = :code LIMIT 1");
-        $stmt_room->execute(['code' => $room_id]);
-        $room = $stmt_room->fetch(PDO::FETCH_ASSOC);
-    }
 
     if (!$room) {
         die("Room ujian tidak ditemukan! (ID/Kode: " . htmlspecialchars($room_id) . ")");
