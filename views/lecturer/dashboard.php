@@ -143,7 +143,7 @@ try {
                     </div>
                 </div>
                 <p class="text-xs text-slate-500 text-sub-title transition-colors">
-                    Kelola room ujian, buat soal baru, dan pantau aktivitas pengerjaan mahasiswa secara *real-time*.
+                    Kelola room ujian, buat soal baru, dan pantau aktivitas pengerjaan mahasiswa secara real-time.
                 </p>
             </div>
 
