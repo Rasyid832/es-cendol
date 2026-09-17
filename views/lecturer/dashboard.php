@@ -11,6 +11,10 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'lecturer') {
 $user_name = $_SESSION['name'] ?? 'Dosen';
 $lecturer_id = $_SESSION['user_id'];
 
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 // Ambil data room miliki dosen ini dari database
 try {
     $stmtRooms = $pdo->prepare("
@@ -284,8 +288,12 @@ try {
                                             </span>
                                         </td>
                                         <td class="py-4 px-3 text-right space-x-2">
-                                            <a href="view_room.php?id=<?= $r['id'] ?? 0 ?>" class="p-2 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition inline-block"><i class="fa-solid fa-eye"></i></a>
-                                            <a href="edit_room.php?id=<?= $r['id'] ?? 0 ?>" class="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 text-sub-title rounded-lg hover:bg-slate-200 transition inline-block"><i class="fa-solid fa-gear"></i></a>
+                                            <a href="room_submissions.php?id=<?= $r['id'] ?? 0 ?>" title="Lihat hasil kerja siswa" class="p-2 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 rounded-lg hover:bg-indigo-100 transition inline-block"><i class="fa-solid fa-eye"></i></a>
+                                            <a href="edit_room.php?id=<?= $r['id'] ?? 0 ?>" title="Pengaturan room" class="p-2 bg-slate-100 dark:bg-slate-800 text-slate-600 text-sub-title rounded-lg hover:bg-slate-200 transition inline-block"><i class="fa-solid fa-gear"></i></a>
+                                            <a href="../../controllers/controller_room_action.php?action=delete&id=<?= $r['id'] ?? 0 ?>&from=dashboard&csrf_token=<?= urlencode($_SESSION['csrf_token']) ?>"
+                                               title="Hapus room"
+                                               onclick="return confirm('Hapus room \'<?= htmlspecialchars($r['subject_name'] ?? '', ENT_QUOTES) ?>\' secara permanen? Semua data siswa yang mengerjakan di room ini juga akan terhapus. Aksi ini tidak bisa dibatalkan.');"
+                                               class="p-2 bg-red-50 dark:bg-red-950/50 text-red-600 rounded-lg hover:bg-red-100 transition inline-block"><i class="fa-solid fa-trash"></i></a>
                                         </td>
                                     </tr>
                                 <?php endforeach; ?>

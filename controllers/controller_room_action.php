@@ -8,6 +8,13 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'lecturer') {
     exit();
 }
 
+// Verifikasi CSRF token (untuk aksi yang mengubah/menghapus data)
+$sentToken = $_GET['csrf_token'] ?? $_POST['csrf_token'] ?? '';
+if (empty($_SESSION['csrf_token']) || !hash_equals($_SESSION['csrf_token'], $sentToken)) {
+    http_response_code(403);
+    die('Permintaan ditolak: token keamanan tidak valid. Silakan muat ulang halaman.');
+}
+
 $action = $_GET['action'] ?? '';
 $room_id = $_GET['room_id'] ?? $_GET['id'] ?? '';
 $lecturer_id = $_SESSION['user_id'];
@@ -59,6 +66,7 @@ try {
 }
 
 // Redirect aman melewati views/lecturer/
-$target_filename = ($from === 'archive') ? 'archive.php' : 'history.php';
+$targets = ['archive' => 'archive.php', 'dashboard' => 'dashboard.php', 'history' => 'history.php'];
+$target_filename = $targets[$from] ?? 'history.php';
 header("Location: ../views/lecturer/" . $target_filename);
 exit();

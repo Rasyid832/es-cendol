@@ -39,6 +39,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     status ENUM('ongoing', 'completed', 'forfeited') DEFAULT 'ongoing', -- forfeited = gugur krn keluar/curang
     score DECIMAL(5,2) DEFAULT NULL,        -- Nilai akhir ujian siswa (diisi setelah selesai dinilai)
     violation_count INT NOT NULL DEFAULT 0, -- Jumlah pelanggaran (pindah tab, keluar fullscreen, dst)
+    submitted_code LONGTEXT DEFAULT NULL,   -- Kode terakhir yang dikumpulkan siswa
+    submitted_language VARCHAR(50) DEFAULT NULL, -- Bahasa pemrograman yang dipakai
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     finished_at TIMESTAMP NULL DEFAULT NULL, -- Waktu siswa menyelesaikan/gugur dari ujian
     FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
