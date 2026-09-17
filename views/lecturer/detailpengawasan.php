@@ -10,81 +10,55 @@ $conn = @new mysqli($host,$user, $pass,$dbname);
 
 $student_id = isset($_GET['student_id']) ? intval($_GET['student_id']) : 0;
 $room_id = isset($_GET['room_id']) ? intval($_GET['room_id']) : 0;
-
 $student_name = "Siswa";
 $identity_number = "N/A";
 $room_code = "N/A";
+$total_logs = 0;
 
-if ($conn && !$conn->connect_error) {
-    if ($student_id > 0) {
-        $q = $conn->prepare("SELECT name, identity_number FROM users WHERE id = ? LIMIT 1");
-        if ($q) {
-            $q->bind_param("i", $student_id);
-            $q->execute();
-            $res = $q->get_result();
-            if ($row = $res->fetch_assoc()) {
-                $student_name = $row['name'];
-                $identity_number = $row['identity_number'];
+if ($conn && !$conn->connect_error && $student_id > 0) {
+    $q = $conn->prepare("SELECT u.name, u.identity_number, s.room_id, r.room_code FROM sessions s JOIN users u ON s.student_id = u.id LEFT JOIN rooms r ON r.id = s.room_id WHERE s.student_id = ? ORDER BY s.id DESC LIMIT 1");
+    if ($q) {
+        $q->bind_param("i", $student_id);
+        $q->execute();
+        $res = $q->get_result();
+        if ($row = $res->fetch_assoc()) {
+            $student_name = $row['name'] ?? $student_name;
+            $identity_number = $row['identity_number'] ?? $identity_number;
+            if ($room_id <= 0) {
+                $room_id = (int)($row['room_id'] ?? 0);
             }
-            $q->close();
+            $room_code = $row['room_code'] ?? $room_code;
         }
+        $q->close();
+    }
+}
+
+if ($conn && !$conn->connect_error && $student_id > 0 && $room_id > 0) {
+    $q = $conn->prepare("SELECT room_code FROM rooms WHERE id = ? LIMIT 1");
+    if ($q) {
+        $q->bind_param("i", $room_id);
+        $q->execute();
+        $res = $q->get_result();
+        if ($row = $res->fetch_assoc()) {
+            $room_code = $row['room_code'] ?? $room_code;
+        }
+        $q->close();
     }
 
-    if ($room_id <= 0 && $student_id > 0) {
-        $qSession = $conn->prepare("
-            SELECT room_id
-            FROM sessions
-            WHERE student_id = ?
-              AND status IN ('ongoing', 'active', 'started')
-            ORDER BY id DESC
-            LIMIT 1
-        ");
-        if ($qSession) {
-            $qSession->bind_param("i", $student_id);
-            $qSession->execute();
-            $resSession = $qSession->get_result();
-            if ($rowSession = $resSession->fetch_assoc()) {
-                $room_id = (int)$rowSession['room_id'];
-            }
-            $qSession->close();
+    $q = $conn->prepare("SELECT COUNT(t.id) AS total_logs FROM telemetry_logs t JOIN sessions s ON t.session_id = s.id WHERE s.student_id = ? AND s.room_id = ?");
+    if ($q) {
+        $q->bind_param("ii", $student_id, $room_id);
+        $q->execute();
+        $res = $q->get_result();
+        if ($row = $res->fetch_assoc()) {
+            $total_logs = (int)($row['total_logs'] ?? 0);
         }
-    }
-
-    if ($room_id <= 0 && $student_id > 0) {
-        $qSession = $conn->prepare("
-            SELECT room_id
-            FROM sessions
-            WHERE student_id = ?
-            ORDER BY id DESC
-            LIMIT 1
-        ");
-        if ($qSession) {
-            $qSession->bind_param("i", $student_id);
-            $qSession->execute();
-            $resSession = $qSession->get_result();
-            if ($rowSession = $resSession->fetch_assoc()) {
-                $room_id = (int)$rowSession['room_id'];
-            }
-            $qSession->close();
-        }
-    }
-
-    if ($room_id > 0) {
-        $qRoom = $conn->prepare("SELECT * FROM rooms WHERE id = ? LIMIT 1");
-        if ($qRoom) {
-            $qRoom->bind_param("i", $room_id);
-            $qRoom->execute();
-            $resRoom = $qRoom->get_result();
-            if ($rowRoom = $resRoom->fetch_assoc()) {
-                $room_code = $rowRoom['code'] ?? $rowRoom['room_code'] ?? $rowRoom['code_room'] ?? $rowRoom['name'] ?? 'N/A';
-            }
-            $qRoom->close();
-        }
+        $q->close();
     }
 }
 
 if ($student_id <= 0 || $room_id <= 0) {
-    die('Data siswa/room tidak ditemukan. Buka detail pengawasan dari Grid setelah siswa masuk ujian.');
+    die("Data siswa atau room tidak ditemukan. Buka detail dari daftar mahasiswa yang sedang ujian.");
 }
 ?>
 
@@ -106,15 +80,14 @@ if ($student_id <= 0 || $room_id <= 0) {
             </a>
             <div>
                 <h1 class="text-xl font-bold tracking-wide text-white"><?= htmlspecialchars($student_name) ?></h1>
-                <p class="text-xs text-slate-400 font-mono mt-0.5"><?= htmlspecialchars($identity_number) ?> &bull; Sesi ID: #<?= $room_id ?> &bull; Kode Room: <?= htmlspecialchars((string)$room_code) ?></p>
+                <p class="text-xs text-slate-400 font-mono mt-0.5"><?= htmlspecialchars($identity_number) ?> &bull; Sesi Room ID: #<?= $room_id ?> &bull; Kode Room: <?= htmlspecialchars($room_code) ?></p>
             </div>
         </div>
 
         <div class="flex items-center gap-3">
             <span class="bg-red-900/30 text-red-400 border border-red-800/40 text-xs px-3 py-1.5 rounded-lg font-medium flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> 0 Telemetri Logs
+                <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> <?= $total_logs ?> Peringatan
             </span>
-            <span id="peer-status" class="bg-slate-800 text-slate-300 border border-slate-700 text-xs px-3 py-1.5 rounded-lg font-mono">Peer: starting...</span>
             <span id="session-status" class="bg-emerald-900/30 text-emerald-400 border border-emerald-800/40 text-xs px-3.5 py-1.5 rounded-lg font-medium flex items-center gap-1.5">
                 <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Ongoing
             </span>
@@ -154,8 +127,8 @@ if ($student_id <= 0 || $room_id <= 0) {
                     <p class="text-lg font-bold text-emerald-400 font-mono">13:22:58</p>
                 </div>
                 <div class="bg-[#0C152E] border border-slate-800/80 rounded-xl p-4 text-center">
-                    <p class="text-xs text-slate-400 font-medium mb-1">Total Telemetri Record</p>
-                    <p class="text-lg font-bold text-white font-mono">0</p>
+                    <p class="text-xs text-slate-400 font-medium mb-1">Total Peringatan</p>
+                    <p class="text-lg font-bold text-white font-mono"><?= $total_logs ?></p>
                 </div>
                 <div class="bg-[#0C152E] border border-slate-800/80 rounded-xl p-4 text-center">
                     <p class="text-xs text-slate-400 font-medium mb-1">Status Sesi</p>
@@ -175,16 +148,16 @@ if ($student_id <= 0 || $room_id <= 0) {
             </div>
 
             <div class="bg-[#0C152E] border border-slate-800/80 rounded-xl p-5 flex-1 flex flex-col">
-                <h3 class="text-sm font-semibold text-slate-200 mb-4">Telemetry Logs Stream</h3>
+                <h3 class="text-sm font-semibold text-slate-200 mb-4">Peringatan Stream</h3>
                 <div class="flex-1 bg-[#050A18] border border-slate-800/60 rounded-xl p-4 flex items-center justify-center text-center">
                     <p class="text-xs text-red-400/80 leading-relaxed max-w-[200px]">
-                        ℹ️ Belum ada rekaman telemetri untuk sesi ini.
+                        ℹ️ Belum ada peringatan untuk sesi ini.
                     </p>
                 </div>
             </div>
 
             <form onsubmit="sendCustomLog(event)" class="flex gap-2">
-                <input type="text" id="log-message" placeholder="Ketik pesan teguran..." class="flex-1 bg-[#0C152E] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500" required>
+                <input type="text" id="log-message" placeholder="Ketik pesan peringatan..." class="flex-1 bg-[#0C152E] border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-indigo-500" required>
                 <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 px-4 py-2.5 rounded-xl text-white transition-all active:scale-95">
                     <svg class="w-4 h-4 transform rotate-45" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path></svg>
                 </button>
@@ -196,212 +169,54 @@ if ($student_id <= 0 || $room_id <= 0) {
     <script>
         const studentId = "<?= $student_id ?>";
         const roomId = "<?= $room_id ?>";
+        
         const supervisorPeerID = `codeprocess-supervisor-${studentId}-${roomId}`;
 
-        let supervisorPeer = null;
+        const supervisorPeer = new Peer(supervisorPeerID);
         let dataConnection = null;
-        let activeCamCall = null;
-        let activeScreenCall = null;
 
-        const screenVideo = document.getElementById('screen-video');
-        const camVideo = document.getElementById('cam-video');
-        const screenLoading = document.getElementById('screen-loading');
-        const camLoading = document.getElementById('cam-loading');
-        const sessionStatus = document.getElementById('session-status');
-        const peerStatus = document.getElementById('peer-status');
+        supervisorPeer.on('open', (id) => {
+            console.log("Supervisor Peer siap dengan ID:", id);
+        });
 
-        function setPeerStatus(text) {
-            if (peerStatus) peerStatus.textContent = 'Peer: ' + text;
-            console.log('[SUPERVISOR]', text);
-        }
+        supervisorPeer.on('call', (call) => {
+            call.answer();
 
-        function showScreenStream(remoteStream) {
-            if (!remoteStream) return;
-            if (screenVideo.srcObject && screenVideo.srcObject !== remoteStream) {
-                try { screenVideo.srcObject.getTracks().forEach(t => t.stop()); } catch (e) {}
-            }
-            screenVideo.srcObject = remoteStream;
-            screenVideo.muted = true;
-            screenVideo.play().then(() => {
-                if (screenLoading) screenLoading.style.display = 'none';
-            }).catch(err => console.error('Gagal play screen video:', err));
-        }
-
-        function showCamStream(remoteStream) {
-            if (!remoteStream) return;
-            if (camVideo.srcObject && camVideo.srcObject !== remoteStream) {
-                try { camVideo.srcObject.getTracks().forEach(t => t.stop()); } catch (e) {}
-            }
-            camVideo.srcObject = remoteStream;
-            camVideo.muted = true;
-            camVideo.play().then(() => {
-                if (camLoading) camLoading.style.display = 'none';
-            }).catch(err => console.error('Gagal play cam video:', err));
-        }
-
-        function setLiveStatus() {
-            if (!sessionStatus) return;
-            sessionStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Live Connected';
-            sessionStatus.className = 'bg-emerald-900/30 text-emerald-400 border border-emerald-800/40 text-xs px-3.5 py-1.5 rounded-lg font-medium flex items-center gap-1.5';
-        }
-
-        let supervisorRetryTimer = null;
-        let supervisorIntentionalClose = false;
-
-        function cleanupSupervisorPeer() {
-            supervisorIntentionalClose = true;
-            try { if (dataConnection) dataConnection.close(); } catch (e) {}
-            try { if (activeCamCall) activeCamCall.close(); } catch (e) {}
-            try { if (activeScreenCall) activeScreenCall.close(); } catch (e) {}
-            try { if (supervisorPeer && !supervisorPeer.destroyed) supervisorPeer.destroy(); } catch (e) {}
-            dataConnection = null;
-            activeCamCall = null;
-            activeScreenCall = null;
-            supervisorPeer = null;
-        }
-
-        function retrySupervisorPeer(delay = 1000) {
-            if (supervisorRetryTimer || supervisorIntentionalClose) return;
-            supervisorRetryTimer = setTimeout(() => {
-                supervisorRetryTimer = null;
-                if (!supervisorIntentionalClose) initSupervisorPeer();
-            }, delay);
-        }
-
-        function initSupervisorPeer() {
-            supervisorIntentionalClose = false;
-            if (supervisorPeer && !supervisorPeer.destroyed) return;
-
-            setPeerStatus('connecting ' + supervisorPeerID);
-            supervisorPeer = new Peer(supervisorPeerID, { debug: 2 });
-
-            supervisorPeer.on('open', (id) => {
-                console.log('Supervisor Peer siap dengan ID:', id);
-                setPeerStatus('READY');
-            });
-
-            supervisorPeer.on('call', (call) => {
-                const streamType = call.metadata && call.metadata.type
-                    ? call.metadata.type
-                    : 'unknown';
-
-                console.log('Incoming WebRTC call:', streamType, call.peer, call.metadata);
-                setPeerStatus('CALL IN ' + streamType);
-
-                try {
-                    call.answer();
-                } catch (e) {
-                    console.error('Gagal answer call:', e);
-                    return;
-                }
-
-                call.on('stream', (remoteStream) => {
-                    console.log('Remote stream diterima:', streamType, remoteStream);
-                    setPeerStatus('STREAM RECEIVED ' + streamType);
-
-                    if (streamType === 'cam') {
-                        activeCamCall = call;
-                        showCamStream(remoteStream);
-                    } else if (streamType === 'screen') {
-                        activeScreenCall = call;
-                        showScreenStream(remoteStream);
-                    } else {
-                        console.warn('Tipe stream tidak dikenal:', streamType);
-                    }
-                });
-
-                call.on('close', () => {
-                    console.log('Stream call ditutup:', streamType);
-                    if (streamType === 'screen' && activeScreenCall === call) {
-                        activeScreenCall = null;
-                        if (screenLoading) screenLoading.style.display = 'flex';
-                    }
-                    if (streamType === 'cam' && activeCamCall === call) {
-                        activeCamCall = null;
-                        if (camLoading) camLoading.style.display = 'flex';
-                    }
-                });
-
-                call.on('error', (err) => {
-                    console.error('WebRTC call error:', streamType, err);
-                });
-            });
-
-            supervisorPeer.on('connection', (conn) => {
-                console.log('Data connection masuk dari siswa:', conn.peer);
-                dataConnection = conn;
-
-                conn.on('open', () => {
-                    console.log('DataChannel siswa TERHUBUNG');
-                    setLiveStatus();
-                    const requestStreams = () => {
-                        if (dataConnection !== conn || !conn.open) return;
-                        try { conn.send({ type: 'REQUEST_STREAMS' }); } catch (e) {}
-                    };
-                    requestStreams();
-                    setTimeout(requestStreams, 500);
-                    setTimeout(requestStreams, 1500);
-                    setTimeout(requestStreams, 3000);
-                    setTimeout(requestStreams, 5000);
-                });
-
-                conn.on('data', (data) => {
-                    console.log('Data dari siswa:', data);
-                    if (data && data.type === 'PING') {
-                        try { conn.send({ type: 'PONG' }); } catch (e) {}
-                        return;
-                    }
-                });
-
-                conn.on('close', () => {
-                    if (dataConnection === conn) dataConnection = null;
-                    console.log('DataChannel siswa ditutup');
-                });
-
-                conn.on('error', (err) => {
-                    console.error('DataChannel error:', err);
-                });
-            });
-
-            supervisorPeer.on('error', (err) => {
-                console.error('Supervisor Peer error:', err.type, err);
-                setPeerStatus('ERROR ' + err.type);
-                if (err.type === 'unavailable-id') {
-                    try { if (supervisorPeer && !supervisorPeer.destroyed) supervisorPeer.destroy(); } catch (e) {}
-                    supervisorPeer = null;
-                    retrySupervisorPeer(1500);
+            call.on('stream', (remoteStream) => {
+                if (call.metadata && call.metadata.type === 'cam') {
+                    const camLoading = document.getElementById('cam-loading');
+                    if (camLoading) camLoading.style.display = 'none';
+                    
+                    const camVideo = document.getElementById('cam-video');
+                    camVideo.srcObject = remoteStream;
+                    camVideo.play().catch(err => console.error("Gagal play cam video:", err));
+                } else {
+                    const screenLoading = document.getElementById('screen-loading');
+                    if (screenLoading) screenLoading.style.display = 'none';
+                    
+                    const screenVideo = document.getElementById('screen-video');
+                    screenVideo.srcObject = remoteStream;
+                    screenVideo.play().catch(err => console.error("Gagal play screen video:", err));
                 }
             });
 
-            setInterval(() => {
-                if (!dataConnection || !dataConnection.open) return;
-                const camLive = camVideo && camVideo.srcObject && camVideo.srcObject.active;
-                const screenLive = screenVideo && screenVideo.srcObject && screenVideo.srcObject.active;
-                if (!camLive || !screenLive) {
-                    try { dataConnection.send({ type: 'REQUEST_STREAMS' }); } catch (e) {}
-                }
-            }, 2000);
-
-            supervisorPeer.on('disconnected', () => {
-                console.warn('Supervisor Peer disconnected, reconnecting...');
-                setPeerStatus('reconnecting');
-                setTimeout(() => {
-                    if (supervisorIntentionalClose) return;
-                    if (supervisorPeer && !supervisorPeer.destroyed) {
-                        try { supervisorPeer.reconnect(); }
-                        catch (e) { supervisorPeer = null; retrySupervisorPeer(1000); }
-                    } else {
-                        supervisorPeer = null;
-                        retrySupervisorPeer(1000);
-                    }
-                }, 800);
+            call.on('close', () => {
+                console.log('Stream call ditutup.');
             });
-        }
 
-        initSupervisorPeer();
+            call.on('error', (err) => {
+                console.error('Call stream error:', err);
+            });
+        });
 
-        window.addEventListener('pagehide', cleanupSupervisorPeer);
-        window.addEventListener('beforeunload', cleanupSupervisorPeer);
+        supervisorPeer.on('connection', (conn) => {
+            dataConnection = conn;
+            console.log("Koneksi data kontrol terhubung dari siswa.");
+
+            dataConnection.on('close', () => {
+                dataConnection = null;
+            });
+        });
 
         function sendWarning(text) {
             if (dataConnection && dataConnection.open) {
@@ -417,23 +232,51 @@ if ($student_id <= 0 || $room_id <= 0) {
             const input = document.getElementById('log-message');
             const msg = input.value.trim();
 
-            if (msg && dataConnection && dataConnection.open) {
+            if (!msg) return;
+
+            if (dataConnection && dataConnection.open) {
                 dataConnection.send({ type: 'WARNING', message: msg });
-                alert("Pesan teguran berhasil dikirim!");
+                alert("Peringatan berhasil ditampilkan di layar siswa!");
                 input.value = "";
             } else {
                 alert("Gagal mengirim! Siswa belum terhubung.");
             }
         }
 
-        function stopExam() {
-            if (confirm("Apakah Anda yakin ingin menghentikan dan mengeluarkan siswa ini dari ujian?")) {
+        async function stopExam() {
+            if (!confirm("Apakah Anda yakin ingin menghentikan dan mengeluarkan siswa ini dari ujian?")) return;
+
+            try {
+                const response = await fetch('../../controllers/lecturer/stop_exam.php', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        student_id: studentId,
+                        room_id: roomId
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!result.success) {
+                    alert(result.message || 'Gagal menghentikan ujian siswa.');
+                    return;
+                }
+
                 if (dataConnection && dataConnection.open) {
                     dataConnection.send({ type: 'STOP_EXAM' });
-                    alert("Perintah hentikan ujian telah dikirim ke siswa.");
-                } else {
-                    alert("Gagal! Siswa tidak terhubung.");
                 }
+
+                const statusEl = document.getElementById('session-status');
+                if (statusEl) {
+                    statusEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-500"></span> Dihentikan';
+                    statusEl.className = 'bg-red-900/30 text-red-400 border border-red-800/40 text-xs px-3.5 py-1.5 rounded-lg font-medium flex items-center gap-1.5';
+                }
+
+                alert("Ujian siswa telah dihentikan dan sesi ditandai gugur.");
+            } catch (error) {
+                console.error(error);
+                alert("Gagal menghubungi server untuk menghentikan ujian.");
             }
         }
     </script>

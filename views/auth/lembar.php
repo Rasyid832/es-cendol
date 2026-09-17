@@ -6,23 +6,28 @@ error_reporting(E_ALL);
 
 require_once __DIR__ . '/../../config/db.php'; // $pdo (PDO)
 
+// Proteksi: wajib login sebagai student
 if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'student') {
     header("Location: login.php");
     exit();
 }
 
+// Dapatkan Data User dari Session
 $user_id         = $_SESSION['user_id'] ?? null;
 $user_email      = $_SESSION['email'] ?? 'SISWA';
 $user_name       = $_SESSION['name'] ?? 'User Coding';
 $identity_number = $_SESSION['identity_number'] ?? 'DEV-001';
 
+// Ambil project/room_id dari parameter URL (opsional)
 $room_id = isset($_GET['room_id']) ? intval($_GET['room_id']) : ($_SESSION['room_id'] ?? 1);
 
+// Default Fallback
 $project_title       = "Workspace Project";
 $duration_minutes    = 90;
 $project_description = "Tulis dan kembangkan kode program Anda di sini.";
 $question_text       = "// Tulis solusi koding Anda di sini\nprint('Hello World');";
 
+// === GUARD: wajib sudah "join" dulu lewat dashboard, dan sesi harus masih 'ongoing' ===
 try {
     $stmtSession = $pdo->prepare("
         SELECT * FROM sessions
@@ -54,6 +59,7 @@ if ($exam_session['status'] === 'completed') {
     exit();
 }
 
+// Token CSRF untuk komunikasi ke controller pelanggaran & finish exam
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -75,6 +81,7 @@ try {
     error_log('[LEMBAR ROOM FETCH ERROR] ' . $e->getMessage());
 }
 
+// Hitung SISA WAKTU berdasarkan waktu join sebenarnya di database
 $total_duration_seconds = $duration_minutes * 60;
 $joined_at_timestamp    = strtotime($exam_session['joined_at'] ?? 'now');
 $elapsed_seconds        = max(0, time() - $joined_at_timestamp);
@@ -86,15 +93,20 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lembar Pengerjaan - <?= htmlspecialchars($project_title) ?></title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
+    <!-- Monaco Editor Loader & CSS -->
     <script src="https://unpkg.com/monaco-editor@0.33.0/min/vs/loader.js"></script>
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://unpkg.com/monaco-editor@0.33.0/min/vs/editor/editor.main.css">
 
+    <!-- TensorFlow & COCO-SSD -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
+    <!-- PeerJS -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
     <style>
@@ -104,11 +116,11 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         ::-webkit-scrollbar-track { background: #1e1e1e; }
         ::-webkit-scrollbar-thumb { background: #424242; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
-            #peer-status { display: none !important; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden select-none bg-[#1e1e1e] text-[#d4d4d4]">
 
+    <!-- OVERLAY: Wajib klik dulu supaya browser mengizinkan Fullscreen API & Screen Share -->
     <div id="start-overlay" class="fixed inset-0 z-50 bg-[#1e1e1e]/90 flex items-center justify-center px-6">
         <div class="bg-[#252526] rounded-lg shadow-2xl p-8 max-w-md w-full text-center border border-[#333333]">
             <h1 class="text-lg font-bold text-[#cccccc] mb-2">Siap Memulai Ujian?</h1>
@@ -124,20 +136,45 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         </div>
     </div>
 
+    <!-- WARNING BANNER -->
     <div id="violation-banner" class="hidden fixed top-0 left-0 right-0 z-40 bg-[#f48771] text-black text-xs font-bold text-center py-2 px-4 shadow-md">
         <span id="violation-text">Pelanggaran terdeteksi.</span>
         <span id="violation-count-wrap"> (Pelanggaran ke-<span id="violation-count">0</span> dari 3)</span>
     </div>
 
+    <div id="supervisor-warning-modal" class="hidden fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm items-center justify-center px-5">
+        <div class="w-full max-w-md bg-[#252526] border border-[#454545] rounded-xl shadow-2xl overflow-hidden">
+            <div class="px-5 py-4 border-b border-[#3c3c3c] flex items-center gap-3">
+                <div class="w-9 h-9 rounded-full bg-[#f48771]/15 border border-[#f48771]/30 flex items-center justify-center text-[#f48771]">⚠</div>
+                <div>
+                    <p class="text-sm font-bold text-white">Peringatan dari Pengawas</p>
+                    <p class="text-[10px] text-[#858585]">Pesan penting selama ujian</p>
+                </div>
+            </div>
+            <div class="px-5 py-6">
+                <p id="supervisor-warning-message" class="text-sm leading-relaxed text-[#d4d4d4] whitespace-pre-wrap"></p>
+            </div>
+            <div class="px-5 py-4 border-t border-[#3c3c3c] flex justify-end">
+                <button type="button" id="supervisor-warning-ok" class="bg-[#0e639c] hover:bg-[#1177bb] text-white text-xs font-semibold px-5 py-2 rounded transition-all">
+                    Saya Mengerti
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- HIDDEN WEBCAM ELEMENT UNTUK PROCTORING AI -->
     <video id="proctoring-video" autoplay playsinline muted style="display:none;"></video>
 
+    <!-- KAMERA PENGAWASAN PREVIEW -->
     <div id="webcam-box" class="fixed bottom-4 right-4 z-30 w-36 rounded overflow-hidden border border-[#454545] shadow-2xl bg-black">
         <video id="webcam-preview-video" autoplay muted playsinline class="w-full h-auto block"></video>
         <div id="webcam-status" class="absolute top-1 left-1 flex items-center gap-1 bg-black/70 px-1.5 py-0.5 rounded text-[9px] text-white font-medium">
             <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> LIVE
         </div>
+        
     </div>
 
+    <!-- VS CODE TOP ACTIVITY BAR -->
     <div class="bg-[#333333] text-[#cccccc] px-4 py-1.5 text-xs flex justify-between items-center border-b border-[#252526] select-none">
         <div class="flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full bg-[#f48771]"></span>
@@ -155,6 +192,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         </div>
     </div>
 
+    <!-- FORM PENGERJAAN UTAMA -->
     <form id="code-form" action="../../controllers/student/finish_exam.php" method="POST" class="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-0 overflow-hidden bg-[#1e1e1e]">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
         <input type="hidden" name="room_id" value="<?= htmlspecialchars($room_id) ?>">
@@ -162,6 +200,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         <input type="hidden" name="answer_code" id="hidden_code_input">
         <input type="hidden" name="flight_time_data" id="flight-time-input">
 
+        <!-- PANEL 1: EXPLORER -->
         <div class="bg-[#252526] border-r border-[#333333] flex flex-col justify-between overflow-y-auto text-xs">
             <div>
                 <div class="px-4 py-2 text-[11px] font-bold text-[#bbbbbb] tracking-wider uppercase border-b border-[#333333] flex justify-between items-center bg-[#2d2d2d]">
@@ -197,6 +236,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             </div>
         </div>
 
+        <!-- AREA KANAN (EDITOR & TERMINAL) -->
         <div class="lg:col-span-3 flex flex-col h-full overflow-hidden bg-[#1e1e1e]">
             <div class="flex-1 flex flex-col overflow-hidden relative">
                 <div class="bg-[#2d2d2d] px-3 py-1.5 border-b border-[#333333] flex justify-between items-center text-xs">
@@ -225,6 +265,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 </div>
             </div>
 
+            <!-- TERMINAL BAWAH -->
             <div id="bottom-terminal-panel" class="hidden h-48 bg-[#252526] border-t border-[#333333] flex flex-col text-xs z-20">
                 <div class="bg-[#2d2d2d] px-4 py-1.5 border-b border-[#333333] flex justify-between items-center text-[11px] text-[#cccccc]">
                     <div class="flex items-center gap-4 font-semibold">
@@ -262,6 +303,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         const VIOLATION_URL = '../../controllers/student/report_violation.php';
         const LEAVE_URL    = '../../controllers/student/leave_exam.php';
 
+        // --- 1. TIMER ---
         let totalSeconds = <?= (int) $remaining_seconds ?>;
         const timerDisplay = document.getElementById('countdown-timer');
 
@@ -290,6 +332,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         setInterval(updateTimer, 1000);
         updateTimer();
 
+        // --- 1.1 KEYSTROKE ---
         let keystrokeLogs = [];
         let lastKeyDownTime = null;
 
@@ -307,334 +350,211 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             lastKeyDownTime = currentTime;
         });
 
+        // --- 1.2 PEERJS STREAMING PERBAIKAN ---
         let studentPeer = null;
         let supervisorConn = null;
         let camStreamGlobal = null;
         let screenStreamGlobal = null;
         let camCallInstance = null;
         let screenCallInstance = null;
-        let peerConnecting = false;
-        let lastSupervisorPong = 0;
-        function setPeerStatus(text, ok = false) {
-            console.log('[PeerJS]', text);
-        }
 
-        function destroyStudentPeer() {
-            try {
-                if (supervisorConn) supervisorConn.close();
-                if (camCallInstance) camCallInstance.close();
-                if (screenCallInstance) screenCallInstance.close();
-                if (studentPeer && !studentPeer.destroyed) studentPeer.destroy();
-            } catch (e) { console.warn('Gagal membersihkan Peer:', e); }
-            supervisorConn = null;
-            camCallInstance = null;
-            screenCallInstance = null;
-            studentPeer = null;
-        }
+        function setPeerStatus(text, ok) {}
 
         function initPeerConnection() {
             if (studentPeer && !studentPeer.destroyed) return;
-            if (peerConnecting) return;
-            peerConnecting = true;
-            setPeerStatus('Menghubungkan ke pengawas...', false);
 
-            studentPeer = new Peer();
-            studentPeerConnectionHandlerInstalled = false;
-            installIncomingSupervisorConnectionHandler();
+            studentPeer = new Peer(undefined, { debug: 1 });
 
             studentPeer.on('open', () => {
-                peerConnecting = false;
                 console.log('Student Peer siap:', studentPeer.id);
                 connectToSupervisor();
             });
 
             studentPeer.on('error', (err) => {
-                peerConnecting = false;
-                console.warn('Peer error:', err.type, err);
-                setPeerStatus(err.type === 'peer-unavailable'
-                    ? 'Pengawas belum membuka halaman...'
-                    : 'PeerJS error: ' + err.type, false);
-
-                if (err.type !== 'peer-unavailable' && err.type !== 'webrtc') {
-                    try { if (studentPeer && !studentPeer.destroyed) studentPeer.destroy(); } catch (e) {}
-                    studentPeer = null;
-                }
+                console.warn('Peer error:', err);
+                supervisorConn = null;
+                setTimeout(() => {
+                    if (!studentPeer || studentPeer.destroyed) initPeerConnection();
+                }, 4000);
             });
 
             studentPeer.on('disconnected', () => {
-                setPeerStatus('Koneksi terputus, menyambung ulang...', false);
                 setTimeout(() => {
-                    if (studentPeer && !studentPeer.destroyed) {
-                        try { studentPeer.reconnect(); }
-                        catch (e) { destroyStudentPeer(); initPeerConnection(); }
-                    }
-                }, 1500);
-            });
-        }
-
-        function bindSupervisorConnection(conn) {
-            if (!conn) return;
-
-            if (supervisorConn && supervisorConn !== conn) {
-                try { supervisorConn.close(); } catch (e) {}
-            }
-            supervisorConn = conn;
-            lastSupervisorPong = Date.now();
-
-            conn.on('open', () => {
-                console.log('DataChannel ke pengawas TERHUBUNG:', conn.peer);
-                if (supervisorConn === conn) {
-                    lastSupervisorPong = Date.now();
-                    setPeerStatus('Terhubung ke pengawas', true);
-                    try { conn.send({ type: 'STREAM_READY' }); } catch (e) {}
-                    setTimeout(sendStreamsToSupervisor, 150);
-                }
-            });
-
-            conn.on('data', handleSupervisorMessage);
-            conn.on('close', () => {
-                if (supervisorConn === conn) {
-                    supervisorConn = null;
-                    lastSupervisorPong = 0;
-                    try { if (camCallInstance) camCallInstance.close(); } catch (e) {}
-                    try { if (screenCallInstance) screenCallInstance.close(); } catch (e) {}
-                    camCallInstance = null;
-                    screenCallInstance = null;
-                    setPeerStatus('Menunggu pengawas...', false);
-                    setTimeout(connectToSupervisor, 250);
-                }
-            });
-            conn.on('error', (err) => {
-                console.warn('Data connection error:', err);
-                if (supervisorConn === conn) {
-                    try { conn.close(); } catch (e) {}
-                    supervisorConn = null;
-                    setPeerStatus('Menunggu pengawas...', false);
-                }
+                    if (studentPeer && !studentPeer.destroyed) studentPeer.reconnect();
+                }, 3000);
             });
         }
 
         function connectToSupervisor() {
             if (!studentPeer || studentPeer.destroyed || !studentPeer.open) return;
-            if (supervisorConn && supervisorConn.open) return;
+            if (supervisorConn && (supervisorConn.open || !supervisorConn.closed)) return;
 
-            if (supervisorConn) { try { supervisorConn.close(); } catch (e) {} }
+            try {
+                const conn = studentPeer.connect(SUPERVISOR_PEER_ID, { reliable: true, serialization: 'json' });
+                supervisorConn = conn;
 
-            const conn = studentPeer.connect(SUPERVISOR_PEER_ID, {
-                reliable: true,
-                serialization: 'json'
-            });
-            bindSupervisorConnection(conn);
-        }
+                conn.on('open', () => {
+                    console.log('DataChannel pengawas siap.');
+                    setPeerStatus('Terhubung ke pengawas', true);
+                    conn.send({ type: 'STUDENT_READY' });
+                    sendStreamsToSupervisor();
+                });
 
-        let studentPeerConnectionHandlerInstalled = false;
-        function installIncomingSupervisorConnectionHandler() {
-            if (!studentPeer || studentPeerConnectionHandlerInstalled) return;
-            studentPeerConnectionHandlerInstalled = true;
-            studentPeer.on('connection', (conn) => {
-                console.log('Koneksi DATA masuk dari pengawas:', conn.peer);
-                if (conn.peer === SUPERVISOR_PEER_ID) {
-                    bindSupervisorConnection(conn);
-                } else {
-                    try { conn.close(); } catch (e) {}
-                }
-            });
+                conn.on('data', (data) => {
+                    console.log('Data dari pengawas:', data);
+                    handleSupervisorMessage(data);
+                });
+
+                conn.on('close', () => {
+                    if (supervisorConn === conn) supervisorConn = null;
+                });
+
+                conn.on('error', (err) => {
+                    console.warn('Data connection error:', err);
+                    if (supervisorConn === conn) supervisorConn = null;
+                });
+            } catch (error) {
+                console.error('Gagal membuat koneksi pengawas:', error);
+                supervisorConn = null;
+            }
         }
 
         function sendStreamsToSupervisor() {
             if (!studentPeer || studentPeer.destroyed || !studentPeer.open) return;
-            if (!supervisorConn || !supervisorConn.open) return;
-
-            if (camCallInstance && camCallInstance.open === false && camCallInstance.__startedAt) {
-                if (Date.now() - camCallInstance.__startedAt > 4000) {
-                    try { camCallInstance.close(); } catch (e) {}
-                    camCallInstance = null;
-                }
-            }
-            if (screenCallInstance && screenCallInstance.open === false && screenCallInstance.__startedAt) {
-                if (Date.now() - screenCallInstance.__startedAt > 4000) {
-                    try { screenCallInstance.close(); } catch (e) {}
-                    screenCallInstance = null;
-                }
-            }
 
             if (camStreamGlobal && !camCallInstance) {
                 try {
-                    const call = studentPeer.call(SUPERVISOR_PEER_ID, camStreamGlobal, {
-                        metadata: { type: 'cam', studentId: STUDENT_ID, roomId: ROOM_ID }
-                    });
-                    if (!call) throw new Error('PeerJS tidak mengembalikan MediaConnection kamera');
-                    call.__startedAt = Date.now();
-                    camCallInstance = call;
-                    setPeerStatus('Mengirim kamera...', true);
-
-                    call.on('close', () => {
-                        if (camCallInstance === call) camCallInstance = null;
-                    });
-                    call.on('error', (err) => {
-                        console.error('Camera call error:', err);
-                        if (camCallInstance === call) camCallInstance = null;
-                    });
+                    camCallInstance = studentPeer.call(SUPERVISOR_PEER_ID, camStreamGlobal, { metadata: { type: 'cam' } });
+                    if (camCallInstance) {
+                        camCallInstance.on('close', () => { camCallInstance = null; });
+                        camCallInstance.on('error', () => { camCallInstance = null; });
+                    }
                 } catch (e) {
-                    console.error('Call kamera gagal:', e);
-                    camCallInstance = null;
+                    console.error('Call Cam Error:', e);
                 }
             }
 
             if (screenStreamGlobal && !screenCallInstance) {
-                const track = screenStreamGlobal.getVideoTracks()[0];
-                if (!track || track.readyState !== 'live') {
-                    screenStreamGlobal = null;
-                    return;
-                }
                 try {
-                    const call = studentPeer.call(SUPERVISOR_PEER_ID, screenStreamGlobal, {
-                        metadata: { type: 'screen', studentId: STUDENT_ID, roomId: ROOM_ID }
-                    });
-                    if (!call) throw new Error('PeerJS tidak mengembalikan MediaConnection screen');
-                    call.__startedAt = Date.now();
-                    screenCallInstance = call;
-                    setPeerStatus('Mengirim screen share...', true);
-
-                    call.on('close', () => {
-                        if (screenCallInstance === call) screenCallInstance = null;
-                    });
-                    call.on('error', (err) => {
-                        console.error('Screen call error:', err);
-                        if (screenCallInstance === call) screenCallInstance = null;
-                    });
+                    screenCallInstance = studentPeer.call(SUPERVISOR_PEER_ID, screenStreamGlobal, { metadata: { type: 'screen' } });
+                    if (screenCallInstance) {
+                        screenCallInstance.on('close', () => { screenCallInstance = null; });
+                        screenCallInstance.on('error', () => { screenCallInstance = null; });
+                    }
                 } catch (e) {
-                    console.error('Call screen gagal:', e);
-                    screenCallInstance = null;
+                    console.error('Call Screen Error:', e);
                 }
             }
-
-            setTimeout(() => {
-                if (camCallInstance && camCallInstance.__startedAt && !camCallInstance.open && Date.now() - camCallInstance.__startedAt > 4000) {
-                    try { camCallInstance.close(); } catch (e) {}
-                    camCallInstance = null;
-                }
-                if (screenCallInstance && screenCallInstance.__startedAt && !screenCallInstance.open && Date.now() - screenCallInstance.__startedAt > 4000) {
-                    try { screenCallInstance.close(); } catch (e) {}
-                    screenCallInstance = null;
-                }
-            }, 4500);
         }
 
         setInterval(() => {
-            if (!examStarted || isFinishing) return;
-
-            if (supervisorConn && supervisorConn.open) {
-                try { supervisorConn.send({ type: 'PING' }); } catch (e) {}
-                if (lastSupervisorPong && Date.now() - lastSupervisorPong > 3500) {
-                    try { supervisorConn.close(); } catch (e) {}
+            if (examStarted && !isFinishing) {
+                if (!supervisorConn || supervisorConn.closed) {
                     supervisorConn = null;
-                    try { if (camCallInstance) camCallInstance.close(); } catch (e) {}
-                    try { if (screenCallInstance) screenCallInstance.close(); } catch (e) {}
-                    camCallInstance = null;
-                    screenCallInstance = null;
+                    connectToSupervisor();
                 }
             }
+        }, 3000);
 
-            connectToSupervisor();
+        function showSupervisorWarning(message) {
+            const modal = document.getElementById('supervisor-warning-modal');
+            const messageEl = document.getElementById('supervisor-warning-message');
+            if (!modal || !messageEl) return;
+            messageEl.textContent = message || 'Peringatan dari pengawas!';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
 
-            if (studentPeer && studentPeer.open && supervisorConn && supervisorConn.open) {
-                setTimeout(sendStreamsToSupervisor, 100);
-            }
-        }, 1000);
+        function closeSupervisorWarning() {
+            const modal = document.getElementById('supervisor-warning-modal');
+            if (!modal) return;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        document.getElementById('supervisor-warning-ok')?.addEventListener('click', closeSupervisorWarning);
 
         function handleSupervisorMessage(data) {
             if (!data || !data.type) return;
 
-            if (data.type === 'PONG') {
-                lastSupervisorPong = Date.now();
-                return;
-            }
-
-            if (data.type === 'REQUEST_STREAMS' || data.type === 'STREAM_READY') {
-                try { if (camCallInstance) camCallInstance.close(); } catch (e) {}
-                try { if (screenCallInstance) screenCallInstance.close(); } catch (e) {}
-                camCallInstance = null;
-                screenCallInstance = null;
-                setTimeout(sendStreamsToSupervisor, 100);
-                setTimeout(sendStreamsToSupervisor, 700);
-                setTimeout(sendStreamsToSupervisor, 1600);
-                return;
-            }
-
             if (data.type === 'WARNING') {
-                showBanner(data.message || 'Peringatan dari pengawas!');
-            } else if (data.type === 'STOP_EXAM') {
+                showSupervisorWarning(data.message || 'Peringatan dari pengawas!');
+                return;
+            }
+
+            if (data.type === 'STOP_EXAM') {
                 isFinishing = true;
-                alert('Ujian Anda dihentikan oleh pengawas.');
-                window.location.href = '../student/dashboard.php';
+                const modal = document.getElementById('supervisor-warning-modal');
+                const messageEl = document.getElementById('supervisor-warning-message');
+                const okBtn = document.getElementById('supervisor-warning-ok');
+
+                if (modal && messageEl) {
+                    messageEl.textContent = 'Ujian Anda dihentikan oleh pengawas. Anda akan dikeluarkan dari halaman ujian.';
+                    modal.classList.remove('hidden');
+                    modal.classList.add('flex');
+                }
+
+                if (okBtn) okBtn.textContent = 'Keluar dari Ujian';
+
+                setTimeout(() => {
+                    window.location.href = '../student/dashboard.php';
+                }, 1500);
             }
         }
 
         async function initCamera() {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { max: 15 } },
-                    audio: false
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { max: 15 } }, 
+                    audio: false 
                 });
                 camStreamGlobal = stream;
 
                 const hiddenVideo = document.getElementById('proctoring-video');
-                if (hiddenVideo) {
-                    hiddenVideo.srcObject = stream;
-                    hiddenVideo.play().catch(() => {});
-                }
+                hiddenVideo.srcObject = stream;
+                hiddenVideo.play();
 
                 const previewVideo = document.getElementById('webcam-preview-video');
-                if (previewVideo) {
-                    previewVideo.srcObject = stream;
-                    previewVideo.play().catch(() => {});
-                }
+                previewVideo.srcObject = stream;
+                previewVideo.play();
 
                 setupMediaRecorder(stream);
                 connectToSupervisor();
                 return true;
             } catch (err) {
-                console.warn('Kamera ditolak/tidak tersedia:', err);
+                console.warn("Kamera ditolak/tidak tersedia:", err);
                 return false;
             }
         }
 
+        // --- FIX SHARE SCREEN (HANYA SELURUH LAYAR / ENTIRE SCREEN) ---
         async function startScreenShare() {
             try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
-                    throw new Error('Browser tidak mendukung screen sharing.');
-                }
-
                 const stream = await navigator.mediaDevices.getDisplayMedia({
-                    video: {
-                        displaySurface: 'monitor',
-                        cursor: 'always',
-                        frameRate: { max: 15 }
+                    video: { 
+                        displaySurface: 'monitor', // Hint agar browser mengarahkan ke Seluruh Layar
+                        cursor: 'always', 
+                        frameRate: { max: 15 } 
                     },
                     audio: false
                 });
 
                 const videoTrack = stream.getVideoTracks()[0];
-                if (!videoTrack) {
-                    stream.getTracks().forEach(t => t.stop());
-                    return false;
-                }
-
                 const settings = videoTrack.getSettings();
-                if (settings.displaySurface && settings.displaySurface !== 'monitor') {
+
+                // WAJIB: hanya Entire Screen / monitor.
+                // Jika browser memberi informasi displaySurface dan bukan monitor, tolak.
+                if (settings.displaySurface !== 'monitor') {
+                    videoTrack.stop();
                     stream.getTracks().forEach(t => t.stop());
-                    alert("DITOLAK! Anda WAJIB membagikan 'Seluruh Layar' (Entire Screen), bukan Window atau Tab Browser.");
+                    alert("⚠️ DITOLAK! Pilih 'Seluruh Layar / Entire Screen'. Window dan Tab tidak diperbolehkan.");
                     return false;
                 }
 
                 screenStreamGlobal = stream;
 
-                videoTrack.addEventListener('ended', () => {
-                    if (screenCallInstance) {
-                        try { screenCallInstance.close(); } catch (e) {}
-                        screenCallInstance = null;
-                    }
+                screenStreamGlobal.getVideoTracks()[0].addEventListener('ended', () => {
+                    screenCallInstance = null;
                     screenStreamGlobal = null;
                     if (examStarted && !isFinishing) {
                         reportViolation('berhenti membagikan layar (screen share)');
@@ -649,14 +569,22 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }
         }
 
+        // --- 1.3 AI PROCTORING ---
         let mediaRecorder;
         let recordedChunks = [];
         let isRecordingClip = false;
         let cocoModel = null;
         let isProctoringActive = false;
         let currentViolationType = "Unknown Violation";
+        let phoneDetectionStreak = 0;
+        let lastPhoneViolationAt = 0;
+        const PHONE_REQUIRED_STREAK = 2;
+        const PHONE_VIOLATION_COOLDOWN = 8000;
+        const PHONE_SCORE_THRESHOLD = 0.35;
 
         window.addEventListener('DOMContentLoaded', async () => {
+            initPeerConnection();
+            
             const camReady = await initCamera();
             if (!camReady) {
                 document.getElementById('start-error').textContent = "Kamera wajib diaktifkan untuk memulai ujian.";
@@ -699,19 +627,29 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         async function runAIProctoringLoop() {
             if (!isProctoringActive || !cocoModel || !examStarted || isFinishing) return;
             const videoElement = document.getElementById('proctoring-video');
-            if (videoElement.readyState !== 4) return;
+            if (videoElement.readyState < 2 || !videoElement.videoWidth || !videoElement.videoHeight) return;
 
             try {
                 const predictions = await cocoModel.detect(videoElement);
-                let phoneDetected = false;
+                const phoneDetected = predictions.some(prediction =>
+                    prediction.class === 'cell phone' && prediction.score >= PHONE_SCORE_THRESHOLD
+                );
 
-                predictions.forEach(prediction => {
-                    if (prediction.class === 'cell phone' && prediction.score > 0.55) {
-                        phoneDetected = true;
-                    }
-                });
+                if (phoneDetected) {
+                    phoneDetectionStreak++;
+                } else {
+                    phoneDetectionStreak = 0;
+                }
 
-                if (phoneDetected && !isRecordingClip) {
+                const now = Date.now();
+                if (
+                    phoneDetected &&
+                    phoneDetectionStreak >= PHONE_REQUIRED_STREAK &&
+                    !isRecordingClip &&
+                    now - lastPhoneViolationAt >= PHONE_VIOLATION_COOLDOWN
+                ) {
+                    lastPhoneViolationAt = now;
+                    phoneDetectionStreak = 0;
                     triggerInstantViolation("Handphone Terdeteksi di Kamera");
                 }
             } catch (e) {
@@ -751,6 +689,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }).catch(error => console.error("Gagal mengunggah klip video:", error));
         }
 
+        // --- 2. MONACO EDITOR & MULTI-FILE ENGINE ---
         let editor = null;
         const extensionMap = {
             'py': 'python', 'rb': 'ruby', 'js': 'javascript',
@@ -927,6 +866,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }
         }
 
+        // --- 3. TERMINAL & COMPILER ---
         function toggleTerminal() {
             const terminalPanel = document.getElementById('bottom-terminal-panel');
             terminalPanel.classList.toggle('hidden');
@@ -1050,63 +990,113 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             return false;
         }
 
+        // --- 4. PROTEKSI ANTI-KELUAR-TAB ---
+        // ROOM_ID, CSRF_TOKEN, VIOLATION_URL, dan LEAVE_URL sudah didefinisikan
+        // di awal script. Jangan deklarasikan ulang dengan const.
+
         let violationCount = 0;
-        let examStarted    = false;
-        let isFinishing    = false;
+        let examStarted = false;
+        let isFinishing = false;
+        let firstFullscreenExitIgnored = false;
+        let tabSwitchPending = false;
+        let pageExitReported = false;
+        let violationBusy = false;
 
-        const overlay  = document.getElementById('start-overlay');
-        const banner   = document.getElementById('violation-banner');
+        const overlay = document.getElementById('start-overlay');
+        const banner = document.getElementById('violation-banner');
         const bannerText = document.getElementById('violation-text');
-        const countEl  = document.getElementById('violation-count');
+        const countEl = document.getElementById('violation-count');
 
-        function showBanner(msg) {
-            bannerText.textContent = msg;
-            banner.classList.remove('hidden');
-            setTimeout(() => banner.classList.add('hidden'), 4000);
+        function showViolationBanner(count) {
+            const n = Math.max(1, Math.min(3, Number(count) || 1));
+            if (countEl) countEl.textContent = n;
+            if (bannerText) bannerText.textContent = `Pelanggaran ke-${n} dari 3.`;
+            if (banner) banner.classList.remove('hidden');
+            clearTimeout(window.__violationBannerTimer);
+            window.__violationBannerTimer = setTimeout(() => {
+                if (banner) banner.classList.add('hidden');
+            }, 4000);
         }
 
         async function reportViolation(reason) {
-            if (!examStarted || isFinishing) return;
+            if (!examStarted || isFinishing || violationBusy) return false;
+            violationBusy = true;
             try {
                 const res = await fetch(VIOLATION_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: new URLSearchParams({ room_id: ROOM_ID, csrf_token: CSRF_TOKEN, reason })
+                    body: new URLSearchParams({
+                        room_id: ROOM_ID,
+                        csrf_token: CSRF_TOKEN,
+                        reason: reason
+                    }),
+                    keepalive: true
                 });
+
                 const data = await res.json();
-                if (data.count !== undefined) {
-                    violationCount = data.count;
-                    countEl.textContent = violationCount;
-                }
-                if (data.forfeited) {
-                    isFinishing = true;
-                    alert('Ujian dinyatakan gugur karena terlalu banyak pelanggaran.');
-                    window.location.href = '../student/dashboard.php';
+                const serverCount = Number(data.count);
+
+                // UI tidak pernah menggugurkan sebelum hitungan lokal/server mencapai 3.
+                if (Number.isFinite(serverCount) && serverCount > violationCount) {
+                    violationCount = serverCount;
                 } else {
-                    showBanner(`Pelanggaran terdeteksi (${reason}). Percobaan ke-${violationCount} dari 3.`);
+                    violationCount += 1;
                 }
+                violationCount = Math.max(1, Math.min(3, violationCount));
+
+                showViolationBanner(violationCount);
+
+                if (violationCount >= 3) {
+                    isFinishing = true;
+                    setTimeout(() => {
+                        window.location.href = '../student/dashboard.php';
+                    }, 900);
+                }
+                return true;
             } catch (e) {
-                console.error('Gagal melapor pelanggaran', e);
+                // Bila endpoint gagal, kesempatan tetap dihitung di sisi browser.
+                violationCount = Math.min(3, violationCount + 1);
+                showViolationBanner(violationCount);
+                if (violationCount >= 3) {
+                    isFinishing = true;
+                    setTimeout(() => {
+                        window.location.href = '../student/dashboard.php';
+                    }, 900);
+                }
+                console.error('Gagal melapor pelanggaran:', e);
+                return false;
+            } finally {
+                violationBusy = false;
             }
+        }
+
+        function queueViolation(reason) {
+            if (!examStarted || isFinishing) return;
+            reportViolation(reason);
         }
 
         document.getElementById('start-btn').addEventListener('click', async () => {
             const errEl = document.getElementById('start-error');
-            errEl.classList.add('hidden');
+            if (errEl) errEl.classList.add('hidden');
 
             if (!camStreamGlobal) {
                 const camRetry = await initCamera();
                 if (!camRetry) {
-                    errEl.textContent = "Kamera belum aktif. Izinkan akses kamera lalu muat ulang halaman.";
-                    errEl.classList.remove('hidden');
+                    if (errEl) {
+                        errEl.textContent = 'Kamera belum aktif. Izinkan akses kamera lalu muat ulang halaman.';
+                        errEl.classList.remove('hidden');
+                    }
                     return;
                 }
             }
 
+            // SCREEN SHARE TIDAK DIUBAH: tetap memakai fungsi startScreenShare() yang sudah ada.
             const shareOk = await startScreenShare();
             if (!shareOk) {
-                errEl.textContent = "Anda harus mengizinkan Share Screen (WAJIB pilih 'Seluruh Layar') untuk memulai ujian.";
-                errEl.classList.remove('hidden');
+                if (errEl) {
+                    errEl.textContent = "Anda harus mengizinkan Share Screen (WAJIB pilih 'Seluruh Layar') untuk memulai ujian.";
+                    errEl.classList.remove('hidden');
+                }
                 return;
             }
 
@@ -1118,81 +1108,65 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
 
             overlay.classList.add('hidden');
             examStarted = true;
-
-            initPeerConnection();
-            setTimeout(connectToSupervisor, 500);
+            connectToSupervisor();
         });
 
-        let exitViolationPending = false;
-        let exitViolationSent = false;
-        let lastExitViolationAt = 0;
+        // Pindah tab = tepat 1 pelanggaran. Event fullscreen yang ikut berubah tidak dihitung lagi.
+        document.addEventListener('visibilitychange', () => {
+            if (!examStarted || isFinishing) return;
 
-        function reportViolationBeacon(reason) {
-            if (!examStarted || isFinishing || exitViolationSent) return;
+            if (document.hidden) {
+                tabSwitchPending = true;
+                queueViolation('pindah tab / minimize');
+            } else {
+                setTimeout(() => { tabSwitchPending = false; }, 300);
+            }
+        });
 
-            const now = Date.now();
-            if (now - lastExitViolationAt < 2000) return;
-            lastExitViolationAt = now;
-            exitViolationSent = true;
+        // Keluar fullscreen pertama diabaikan. Keluar fullscreen berikutnya = pelanggaran.
+        document.addEventListener('fullscreenchange', () => {
+            if (!examStarted || isFinishing || document.fullscreenElement) return;
 
+            if (tabSwitchPending) {
+                // Perubahan fullscreen akibat pindah tab jangan menjadi hitungan kedua.
+                setTimeout(() => { tabSwitchPending = false; }, 300);
+                return;
+            }
+
+            if (!firstFullscreenExitIgnored) {
+                firstFullscreenExitIgnored = true;
+                return;
+            }
+
+            queueViolation('keluar fullscreen');
+        });
+
+        // Penutupan halaman dicatat sebagai pelanggaran. Jangan memakai leave_exam.php
+        // karena endpoint tersebut dapat mengakhiri sesi secara langsung.
+        function reportPageClose() {
+            if (!examStarted || isFinishing || pageExitReported) return;
+            pageExitReported = true;
             const payload = new URLSearchParams({
                 room_id: ROOM_ID,
                 csrf_token: CSRF_TOKEN,
-                reason: reason
+                reason: 'menutup halaman / browser'
             }).toString();
-
             try {
                 navigator.sendBeacon(
                     VIOLATION_URL,
                     new Blob([payload], { type: 'application/x-www-form-urlencoded' })
                 );
             } catch (e) {
-                try {
-                    fetch(VIOLATION_URL, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: payload,
-                        keepalive: true
-                    });
-                } catch (err) {}
+                console.warn('Beacon pelanggaran gagal:', e);
             }
         }
 
-        document.addEventListener('visibilitychange', () => {
-            if (!examStarted || isFinishing) return;
-
-            if (document.hidden) {
-                exitViolationPending = true;
-
-                setTimeout(() => {
-                    if (document.hidden && exitViolationPending && !isFinishing) {
-                        reportViolation('pindah tab / minimize');
-                    }
-                }, 250);
-            } else {
-                exitViolationPending = false;
-                exitViolationSent = false;
-            }
-        });
-
-        document.addEventListener('fullscreenchange', () => {
-            if (!examStarted || isFinishing) return;
-            if (!document.fullscreenElement) {
-                reportViolation('keluar fullscreen');
-            }
-        });
-
+        window.addEventListener('pagehide', reportPageClose);
         window.addEventListener('beforeunload', (e) => {
             if (!examStarted || isFinishing) return;
+            reportPageClose();
             e.preventDefault();
             e.returnValue = '';
-        });
-
-        window.addEventListener('pagehide', (e) => {
-            if (!examStarted || isFinishing) return;
-            if (!e.persisted) {
-                reportViolationBeacon('menutup browser / halaman ujian');
-            }
         });
     </script>
 </body>

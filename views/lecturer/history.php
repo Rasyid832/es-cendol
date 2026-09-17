@@ -20,7 +20,14 @@ try {
                 r.created_at,
                 r.status,
                 COUNT(DISTINCT s.id) AS total_peserta,
-                COUNT(DISTINCT CASE WHEN l.id IS NOT NULL THEN s.id END) AS total_problem
+                COUNT(DISTINCT CASE 
+                    WHEN (
+                        SELECT COUNT(*)
+                        FROM logs l2
+                        WHERE l2.session_id = s.id
+                    ) >= 3
+                    THEN s.id
+                END) AS total_problem
             FROM rooms r
             LEFT JOIN sessions s ON r.id = s.room_id
             LEFT JOIN logs l ON s.id = l.session_id
