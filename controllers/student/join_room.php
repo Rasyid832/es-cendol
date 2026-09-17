@@ -47,14 +47,26 @@ try {
         exit();
     }
 
-    // Cek apakah siswa sudah punya sesi 'ongoing' di room ini agar tidak dobel
+    // Cek riwayat sesi siswa ini di room tsb (apapun statusnya)
     $stmtCheck = $pdo->prepare("
-        SELECT id FROM sessions
-        WHERE room_id = :room_id AND student_id = :student_id AND status = 'ongoing'
-        LIMIT 1
+        SELECT id, status FROM sessions
+        WHERE room_id = :room_id AND student_id = :student_id
+        ORDER BY id DESC LIMIT 1
     ");
     $stmtCheck->execute(['room_id' => $room['id'], 'student_id' => $student_id]);
-    $existing = $stmtCheck->fetch();
+    $existing = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+    if ($existing && $existing['status'] === 'forfeited') {
+        $_SESSION['join_error'] = "Anda sudah keluar dari ujian ini sebelumnya. Ujian dinyatakan gugur dan tidak dapat diakses lagi. Hubungi pengawas ujian jika ini kesalahan.";
+        header("Location: ../../views/student/dashboard.php");
+        exit();
+    }
+
+    if ($existing && $existing['status'] === 'completed') {
+        $_SESSION['join_error'] = "Anda sudah menyelesaikan ujian ini sebelumnya.";
+        header("Location: ../../views/student/dashboard.php");
+        exit();
+    }
 
     if (!$existing) {
         $stmtInsert = $pdo->prepare("
@@ -65,7 +77,7 @@ try {
     }
 
     $_SESSION['active_room_id'] = $room['id'];
-    header("Location: ../../views/auth/room.php?room_id=" . $room['id']);
+    header("Location: ../../views/student/exam.php?room_id=" . $room['id']);
     exit();
 
 } catch (PDOException $e) {

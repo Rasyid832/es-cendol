@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 2. TABEL ROOMS (Dibuat oleh Lecturer - Ditambahkan kolom question_text)
+-- 2. TABEL ROOMS (Dibuat oleh Lecturer)
 CREATE TABLE IF NOT EXISTS rooms (
     id INT AUTO_INCREMENT PRIMARY KEY,
     lecturer_id INT NOT NULL,
@@ -22,10 +22,9 @@ CREATE TABLE IF NOT EXISTS rooms (
     exam_type VARCHAR(50) DEFAULT NULL,     -- Jenis Ujian (UAS, UTS, Kuis Mingguan, Praktikum, dst)
     room_code VARCHAR(50) NOT NULL UNIQUE,  -- Room ID (misal: CS101A)
     passcode VARCHAR(100) NOT NULL,         -- Kata Sandi Masuk
-    duration INT NOT NULL DEFAULT 60,       -- Durasi Ujian (menit)
+    duration INT NOT NULL DEFAULT 60,  -- Durasi Ujian (menit)
     start_time DATETIME NULL,  
     description TEXT DEFAULT NULL,          -- Deskripsi / Catatan Tambahan
-    question_text LONGTEXT DEFAULT NULL,    -- [BARU] Menyimpan teks soal ujian dari dosen
     status ENUM('active', 'inactive', 'archived') DEFAULT 'active', -- Status Room (Aktif, Nonaktif, Arsip)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (lecturer_id) REFERENCES users(id) ON DELETE CASCADE
@@ -36,10 +35,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     id INT AUTO_INCREMENT PRIMARY KEY,
     room_id INT NOT NULL,
     student_id INT NOT NULL,
-    status ENUM('ongoing', 'completed') DEFAULT 'ongoing', -- Status pengerjaan siswa
+    status ENUM('ongoing', 'completed', 'forfeited') DEFAULT 'ongoing', -- forfeited = gugur krn keluar/curang
     score DECIMAL(5,2) DEFAULT NULL,        -- Nilai akhir ujian siswa (diisi setelah selesai dinilai)
+    violation_count INT NOT NULL DEFAULT 0, -- Jumlah pelanggaran (pindah tab, keluar fullscreen, dst)
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    finished_at TIMESTAMP NULL DEFAULT NULL, -- Waktu siswa menyelesaikan ujian
+    finished_at TIMESTAMP NULL DEFAULT NULL, -- Waktu siswa menyelesaikan/gugur dari ujian
     FOREIGN KEY (room_id) REFERENCES rooms(id) ON DELETE CASCADE,
     FOREIGN KEY (student_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -76,6 +76,10 @@ ON DUPLICATE KEY UPDATE id=id;
 
 -- ===================================================
 -- MIGRASI UNTUK DATABASE YANG SUDAH ADA SEBELUMNYA
--- (Jalankan baris di bawah ini saja jika database Anda sudah terlanjur dibuat)
+-- (Jalankan blok ini jika tabel rooms/sessions sudah pernah dibuat
+--  dari versi schema.sql yang lama, agar tidak perlu drop database)
 -- ===================================================
--- ALTER TABLE rooms ADD COLUMN question_text LONGTEXT DEFAULT NULL AFTER description;
+-- ALTER TABLE rooms ADD COLUMN exam_type VARCHAR(50) DEFAULT NULL AFTER class_name;
+-- ALTER TABLE sessions ADD COLUMN status ENUM('ongoing','completed') DEFAULT 'ongoing' AFTER student_id;
+-- ALTER TABLE sessions ADD COLUMN score DECIMAL(5,2) DEFAULT NULL AFTER status;
+-- ALTER TABLE sessions ADD COLUMN finished_at TIMESTAMP NULL DEFAULT NULL AFTER joined_at;
