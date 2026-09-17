@@ -65,16 +65,19 @@ if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
 
+$question_text = "";
+
 if ($conn && !$conn->connect_error) {
-    $query_room = "SELECT * FROM exam_rooms WHERE id = ?";
+    $query_room = "SELECT * FROM rooms WHERE id = ?";
     if ($stmt = $conn->prepare($query_room)) {
         $stmt->bind_param("i", $room_id);
         $stmt->execute();
         $room_result = $stmt->get_result();
         if ($room_result->num_rows > 0) {
             $room = $room_result->fetch_assoc();
-            $exam_title = $room['title'];
-            $duration_minutes = $room['duration_minutes'];
+            $exam_title       = $room['subject_name'];
+            $duration_minutes = $room['duration'];
+            $question_text    = $room['question_text'] ?? "";
         }
     }
 }
@@ -87,9 +90,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
 
     if ($conn && !$conn->connect_error && $user_id) {
         $json_data = json_encode(['language' => $language, 'code' => $submitted_code]);
-        $insert_query = "INSERT INTO telemetry_logs (student_id, room_id, flight_time_data) VALUES (?, ?, ?)";
+        // Tabel telemetry_logs cuma punya kolom session_id (FK ke sessions.id),
+        // bukan student_id/room_id langsung. $exam_session sudah didapat dari guard di atas.
+        $session_id_for_log = $exam_session['id'];
+        $insert_query = "INSERT INTO telemetry_logs (session_id, flight_time_data) VALUES (?, ?)";
         $stmt_insert = $conn->prepare($insert_query);
-        $stmt_insert->bind_param("iis", $user_id, $room_id, $json_data);
+        $stmt_insert->bind_param("is", $session_id_for_log, $json_data);
 
         if ($stmt_insert->execute()) {
             $message = "<script>alert('Kode berhasil disimpan ke database!');</script>";
@@ -178,7 +184,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_code'])) {
                 <h2 class="text-xl font-bold mb-4 text-gray-800 border-b pb-2"><?= htmlspecialchars($exam_title) ?></h2>
                 <div class="text-gray-600 space-y-3 text-sm">
                     <p><strong>Deskripsi Soal:</strong></p>
-                    <p>Pilihlah bahasa pemrograman yang ingin digunakan di atas editor kode. Buatlah program yang mencetak output sesuai spesifikasi.</p>
+                    <?php if (!empty($question_text)): ?>
+                        <p class="whitespace-pre-line"><?= nl2br(htmlspecialchars($question_text)) ?></p>
+                    <?php else: ?>
+                        <p>Pilihlah bahasa pemrograman yang ingin digunakan di atas editor kode. Buatlah program yang mencetak output sesuai spesifikasi.</p>
+                    <?php endif; ?>
                     <p><strong>Contoh Perintah Output:</strong></p>
                     <ul class="list-disc list-inside space-y-1 text-xs font-mono bg-gray-50 p-3 rounded-lg border">
                         <li><strong>Python:</strong> <code>print("Hello World")</code></li>
@@ -406,6 +416,8 @@ function runCodeMultiLanguage() {
 
     terminalOutput.scrollTop = terminalOutput.scrollHeight;
 }
+    </script>
+
     <!-- SCRIPT: PROTEKSI ANTI-KELUAR-TAB -->
     <script>
         const ROOM_ID        = <?= json_encode($room_id) ?>;

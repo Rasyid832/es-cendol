@@ -52,11 +52,33 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 );
 
                 if ($isPasswordValid) {
-                    $_SESSION['room_id']   = $room['id'];
-                    $_SESSION['room_code'] = $room['room_code'] ?? $room['code'];
+                    $studentId = $_SESSION['user_id'];
+                    $roomId    = $room['id'];
 
-                    header("Location: lembar.php?room_id=" . $room['id']);
-                    exit();
+                    // Cek sesi TERAKHIR siswa ini di room tsb, apapun statusnya
+                    // (sebelumnya cuma cek status 'ongoing', jadi siswa yang sudah
+                    // gugur/forfeited atau sudah completed bisa bikin sesi baru lagi)
+                    $stmtCheck = $pdo->prepare("SELECT id, status FROM sessions WHERE room_id = :room_id AND student_id = :student_id ORDER BY id DESC LIMIT 1");
+                    $stmtCheck->execute(['room_id' => $roomId, 'student_id' => $studentId]);
+                    $existingSession = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+                    if ($existingSession && $existingSession['status'] === 'forfeited') {
+                        $message = "Anda sudah dinyatakan gugur dari ujian ini karena melanggar aturan (keluar tab/fullscreen 3x). Tidak bisa bergabung lagi.";
+                    } elseif ($existingSession && $existingSession['status'] === 'completed') {
+                        $message = "Anda sudah menyelesaikan/mengumpulkan ujian ini sebelumnya. Tidak bisa bergabung lagi.";
+                    } else {
+                        // Belum pernah join sama sekali, ATAU masih 'ongoing' (lanjutkan sesi yang sama)
+                        if (!$existingSession) {
+                            $stmtInsert = $pdo->prepare("INSERT INTO sessions (room_id, student_id, status) VALUES (:room_id, :student_id, 'ongoing')");
+                            $stmtInsert->execute(['room_id' => $roomId, 'student_id' => $studentId]);
+                        }
+
+                        $_SESSION['room_id']   = $room['id'];
+                        $_SESSION['room_code'] = $room['room_code'] ?? $room['code'];
+
+                        header("Location: lembar.php?room_id=" . $room['id']);
+                        exit();
+                    }
                 } else {
                     $message = "Password yang kamu masukkan salah.";
                 }
