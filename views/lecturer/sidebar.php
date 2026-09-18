@@ -44,11 +44,7 @@ $initials = strtoupper(substr($dosen_name, 0, 2));
                 <span>History Ujian</span>
             </a>
 
-            <!-- Menu Arsip Ujian -->
-            <a href="archive.php" class="flex items-center gap-3 px-3.5 py-3 rounded-xl font-medium text-sm transition-all <?= ($current_page == 'archive.php') ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/30' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800' ?>">
-                <i class="fa-solid fa-box-archive w-5 text-center"></i>
-                <span>Arsip Ujian</span>
-            </a>
+           
         </nav>
     </div>
 

@@ -12,7 +12,7 @@ $lecturer_id = $_SESSION['user_id'];
 $rooms_history = [];
 
 try {
-    // Menyaring HANYA room yang TIDAK diarsipkan
+    // Mengambil semua room milik dosen
     $sql = "SELECT 
                 r.id,
                 r.subject_name,
@@ -31,7 +31,7 @@ try {
             FROM rooms r
             LEFT JOIN sessions s ON r.id = s.room_id
             LEFT JOIN logs l ON s.id = l.session_id
-            WHERE r.lecturer_id = :lecturer_id AND r.status != 'archived'
+            WHERE r.lecturer_id = :lecturer_id
             GROUP BY r.id
             ORDER BY r.created_at DESC";
 
@@ -159,9 +159,6 @@ try {
                                             <div class="flex items-center justify-center gap-2">
                                                 <a href="review_history.php?room_id=<?= $room['id'] ?>" class="text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-xl transition-all shadow-md inline-flex items-center gap-1.5">
                                                     <i class="fa-solid fa-magnifying-glass"></i> Cek Bukti
-                                                </a>
-                                                <a href="../../controllers/controller_room_action.php?action=archive&id=<?= $room['id'] ?>&from=history" onclick="return confirm('Pindahkan room ini ke Arsip?')" class="text-xs font-semibold bg-amber-500 hover:bg-amber-600 text-white px-3 py-2 rounded-xl transition-all shadow-md inline-flex items-center gap-1.5">
-                                                    <i class="fa-solid fa-box-archive"></i> Arsipkan
                                                 </a>
                                             </div>
                                         </td>
