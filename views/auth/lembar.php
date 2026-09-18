@@ -93,8 +93,22 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
     <script src="https://unpkg.com/monaco-editor@0.33.0/min/vs/loader.js"></script>
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://unpkg.com/monaco-editor@0.33.0/min/vs/editor/editor.main.css">
 
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.m<script src="https://unpkg.com/monaco-editor@0.33.0/min/vs/loader.js"></script>
+    <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://unpkg.com/monaco-editor@0.33.0/min/vs/editor/editor.main.css">
+
+    <!-- Pengaman AMD Loader Monaco -->
+    <script>
+        window._tempDefine = window.define;
+        window.define = undefined;
+    </script>
+
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+    <!-- Kembalikan fungsi define -->
+    <script>
+        window.define = window._tempDefine;
+    </script>
 
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
@@ -150,6 +164,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
     </div>
 
     <video id="proctoring-video" autoplay playsinline muted style="display:none;"></video>
+    <video id="screen-video" autoplay playsinline muted style="display:none;"></video>
 
     <div id="webcam-box" class="fixed bottom-4 right-4 z-30 w-36 rounded overflow-hidden border border-[#454545] shadow-2xl bg-black">
         <video id="webcam-preview-video" autoplay muted playsinline class="w-full h-auto block"></video>
@@ -495,7 +510,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 previewVideo.srcObject = stream;
                 previewVideo.play();
 
-                setupMediaRecorder(stream);
+                //setupMediaRecorder(stream);
                 connectToSupervisor();
                 return true;
             } catch (err) {
@@ -527,6 +542,12 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
 
                 screenStreamGlobal = stream;
 
+                const screenVideoEl = document.getElementById('screen-video');
+                if (screenVideoEl) {
+                    screenVideoEl.srcObject = stream;
+                    screenVideoEl.play().catch(() => {});
+                }
+
                 screenStreamGlobal.getVideoTracks()[0].addEventListener('ended', () => {
                     screenCallInstance = null;
                     screenStreamGlobal = null;
@@ -551,9 +572,9 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         let currentViolationType = "Unknown Violation";
         let phoneDetectionStreak = 0;
         let lastPhoneViolationAt = 0;
-        const PHONE_REQUIRED_STREAK = 2;
         const PHONE_VIOLATION_COOLDOWN = 8000;
-        const PHONE_SCORE_THRESHOLD = 0.35;
+        let aiPhoneThreshold = 0.20; 
+        let aiRequiredStreak = 2; 
 
         window.addEventListener('DOMContentLoaded', async () => {
             initPeerConnection();
@@ -569,7 +590,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                     cocoModel = await cocoSsd.load();
                     document.getElementById('ai-status-badge').classList.remove('hidden');
                     isProctoringActive = true;
-                    setInterval(runAIProctoringLoop, 1500);
+                    setInterval(runAIProctoringLoop, 500);
                 } catch(e) { console.warn("Gagal memuat COCO-SSD", e); }
             }
         });
@@ -590,13 +611,51 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             };
 
             mediaRecorder.onstop = function() {
-                const blob = new Blob(recordedChunks, { type: 'video/webm' });
-                uploadViolationClip(blob, currentViolationType);
-                recordedChunks = [];
-                isRecordingClip = false;
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        recordedChunks = [];
+        if (mediaRecorder.__logId) uploadViolationClip(blob, mediaRecorder.__logId);
             };
         }
 
+        let drawLoopActive = false;
+
+        function setupCombinedRecorder() {
+            if (!camStreamGlobal || !screenStreamGlobal) return;
+            if (mediaRecorder) return;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 960;
+            canvas.height = 540;
+            const ctx = canvas.getContext('2d');
+
+            const screenVideoEl = document.getElementById('screen-video');
+            const camVideoEl = document.getElementById('proctoring-video');
+
+            drawLoopActive = true;
+            function drawFrame() {
+                if (!drawLoopActive) return;
+
+                if (screenVideoEl && screenVideoEl.readyState >= 2) {
+                    ctx.drawImage(screenVideoEl, 0, 0, canvas.width, canvas.height);
+                }
+
+                if (camVideoEl && camVideoEl.readyState >= 2) {
+                    const camW = 200, camH = 150;
+                    const camX = canvas.width - camW - 12;
+                    const camY = canvas.height - camH - 12;
+                    ctx.drawImage(camVideoEl, camX, camY, camW, camH);
+                    ctx.strokeStyle = '#f48771';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(camX, camY, camW, camH);
+                }
+
+                requestAnimationFrame(drawFrame);
+            }
+            drawFrame();
+
+            const combinedStream = canvas.captureStream(15);
+            setupMediaRecorder(combinedStream);
+        }
         async function runAIProctoringLoop() {
             if (!isProctoringActive || !cocoModel || !examStarted || isFinishing) return;
             const videoElement = document.getElementById('proctoring-video');
@@ -604,12 +663,15 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
 
             try {
                 const predictions = await cocoModel.detect(videoElement);
+                
+                // Pakai variabel dinamis dari settingan di atas
                 const phoneDetected = predictions.some(prediction =>
-                    prediction.class === 'cell phone' && prediction.score >= PHONE_SCORE_THRESHOLD
+                    prediction.class === 'cell phone' && prediction.score >= aiPhoneThreshold
                 );
 
                 if (phoneDetected) {
                     phoneDetectionStreak++;
+                    console.log(`[AI-DEBUG] HP Terdeteksi! Streak: ${phoneDetectionStreak}/${aiRequiredStreak}`);
                 } else {
                     phoneDetectionStreak = 0;
                 }
@@ -617,13 +679,13 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 const now = Date.now();
                 if (
                     phoneDetected &&
-                    phoneDetectionStreak >= PHONE_REQUIRED_STREAK &&
+                    phoneDetectionStreak >= aiRequiredStreak &&
                     !isRecordingClip &&
                     now - lastPhoneViolationAt >= PHONE_VIOLATION_COOLDOWN
                 ) {
                     lastPhoneViolationAt = now;
                     phoneDetectionStreak = 0;
-                    triggerInstantViolation("Handphone Terdeteksi di Kamera");
+                    queueViolation("Handphone Terdeteksi di Kamera");
                 }
             } catch (e) {
                 console.error("AI Loop error:", e);
@@ -648,18 +710,48 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }
         }
 
-        function uploadViolationClip(videoBlob, violationType) {
-            const formData = new FormData();
-            formData.append('room_id', ROOM_ID);
-            formData.append('violation_type', violationType);
-            formData.append('csrf_token', CSRF_TOKEN);
-            formData.append('video_file', videoBlob, 'violation_evidence.webm');
-            formData.append('timestamp', new Date().toISOString());
+        function recordEvidence(logId, reason) {
+            if (!mediaRecorder) {
+                console.warn('MediaRecorder belum siap!');
+                return;
+            }
+            
+            // Paksa hentikan jika masih merekam, lalu bersihkan chunks
+            if (mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+            }
 
-            fetch('../../controllers/student/report_violation.php', {
+            recordedChunks = [];
+            mediaRecorder.__logId = logId;
+
+            try {
+                mediaRecorder.start();
+                console.log('[MediaRecorder] Mulai merekam bukti pelanggaran selama 5 detik...');
+            } catch (e) {
+                console.warn('MediaRecorder gagal start:', e);
+                return;
+            }
+
+            setTimeout(() => {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                    console.log('[MediaRecorder] Selesai merekam, mengirim ke server...');
+                }
+            }, 5000);
+        }
+                function uploadViolationClip(videoBlob, logId) {
+            const formData = new FormData();
+            formData.append('csrf_token', CSRF_TOKEN);
+            formData.append('log_id', logId);
+            formData.append('cheat_video', videoBlob, 'evidence.webm');
+
+            fetch('../../controllers/student/save_cheat_video.php', {
                 method: 'POST',
                 body: formData
-            }).catch(error => console.error("Gagal mengunggah klip video:", error));
+            })
+            .then(res => res.json())
+            .then(data => console.log('[Bukti video]', data.msg))
+            .catch(err => console.error('Gagal mengunggah klip video:', err));
         }
 
         let editor = null;
@@ -985,7 +1077,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }, 4000);
         }
 
-        async function reportViolation(reason) {
+       async function reportViolation(reason) {
             if (!examStarted || isFinishing || violationBusy) return false;
             violationBusy = true;
             try {
@@ -1001,6 +1093,10 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 });
 
                 const data = await res.json();
+                
+                // [DEBUG] Cek apakah server mengirimkan log_id
+                console.log("[DEBUG REPORT] Respon dari server:", data);
+
                 const serverCount = Number(data.count);
 
                 if (Number.isFinite(serverCount) && serverCount > violationCount) {
@@ -1011,6 +1107,13 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 violationCount = Math.max(1, Math.min(3, violationCount));
 
                 showViolationBanner(violationCount);
+
+                if (data.log_id) {
+                    console.log("[RECORD] Memulai rekaman bukti untuk log_id:", data.log_id);
+                    recordEvidence(data.log_id, reason);
+                } else {
+                    console.warn("[WARNING] log_id dari server tidak ditemukan! Video gagal direkam.");
+                }
 
                 if (violationCount >= 3) {
                     isFinishing = true;
@@ -1070,6 +1173,12 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 console.warn('Fullscreen ditolak/tidak didukung.', e);
             }
 
+            try {
+            setupCombinedRecorder();
+            } catch (e) {
+            console.error('Gabung layar+kamera gagal, pakai kamera aja:', e);
+            if (!mediaRecorder) setupMediaRecorder(camStreamGlobal);
+            }
             overlay.classList.add('hidden');
             examStarted = true;
             connectToSupervisor();

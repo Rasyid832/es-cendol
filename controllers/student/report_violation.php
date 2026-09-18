@@ -1,9 +1,5 @@
 <?php
 // controllers/student/report_violation.php
-// Dipanggil via fetch() dari views/student/exam.php setiap kali terdeteksi
-// pelanggaran (pindah tab, minimize, keluar fullscreen). Setelah melewati
-// batas MAX_VIOLATIONS, sesi otomatis digugurkan (forfeited).
-
 header('Content-Type: application/json');
 session_start();
 require_once __DIR__ . '/../../config/db.php';
@@ -34,6 +30,7 @@ if (!$room_id) {
 }
 
 try {
+    // 1. Ambil data session siswa yang sedang aktif di room tersebut
     $stmt = $pdo->prepare("
         SELECT id, status, violation_count FROM sessions
         WHERE room_id = :room_id AND student_id = :student_id
@@ -48,26 +45,52 @@ try {
     }
 
     $newCount = (int) $session['violation_count'] + 1;
+    $session_id = $session['id'];
 
+    // 2. Simpan log pelanggaran teks ke tabel 'logs' (Sesuai schema.sql)
+    $stmtLogText = $pdo->prepare("
+        INSERT INTO logs (session_id, log_type, description) 
+        VALUES (:session_id, 'violation', :description)
+    ");
+    $stmtLogText->execute([
+        'session_id' => $session_id,
+        'description' => $reason
+    ]);
+
+    // 3. Buat baris kosong di 'telemetry_logs' khusus untuk menampung video bukti (.webm)
+    // Sesuai struktur kolom telemetry_logs di schema.sql kamu
+    $stmtTelemetry = $pdo->prepare("
+        INSERT INTO telemetry_logs (session_id) 
+        VALUES (:session_id)
+    ");
+    $stmtTelemetry->execute([
+        'session_id' => $session_id
+    ]);
+    
+    // Ambil ID baris telemetri ini agar menjadi log_id penampung video
+    $log_id = $pdo->lastInsertId(); 
+
+    // 4. Update jumlah pelanggaran ke tabel sessions
     if ($newCount >= MAX_VIOLATIONS) {
         $stmtUpdate = $pdo->prepare("
             UPDATE sessions
             SET violation_count = :count, status = 'forfeited', finished_at = NOW()
             WHERE id = :id
         ");
-        $stmtUpdate->execute(['count' => $newCount, 'id' => $session['id']]);
+        $stmtUpdate->execute(['count' => $newCount, 'id' => $session_id]);
         error_log("[EXAM VIOLATION] student_id={$student_id} room_id={$room_id} reason={$reason} -> FORFEITED");
 
         echo json_encode([
-            'ok'         => true,
-            'forfeited'  => true,
-            'count'      => $newCount,
-            'max'        => MAX_VIOLATIONS,
-            'message'    => 'Batas pelanggaran terlampaui. Ujian dinyatakan gugur.',
+            'ok'        => true,
+            'forfeited' => true,
+            'count'     => $newCount,
+            'max'       => MAX_VIOLATIONS,
+            'log_id'    => intval($log_id), // Dikirim ke JavaScript agar MediaRecorder jalan
+            'message'   => 'Batas pelanggaran terlampaui. Ujian dinyatakan gugur.',
         ]);
     } else {
         $stmtUpdate = $pdo->prepare("UPDATE sessions SET violation_count = :count WHERE id = :id");
-        $stmtUpdate->execute(['count' => $newCount, 'id' => $session['id']]);
+        $stmtUpdate->execute(['count' => $newCount, 'id' => $session_id]);
         error_log("[EXAM VIOLATION] student_id={$student_id} room_id={$room_id} reason={$reason} count={$newCount}");
 
         echo json_encode([
@@ -75,11 +98,12 @@ try {
             'forfeited' => false,
             'count'     => $newCount,
             'max'       => MAX_VIOLATIONS,
+            'log_id'    => intval($log_id), // Dikirim ke JavaScript agar MediaRecorder jalan
             'message'   => 'Pelanggaran tercatat.',
         ]);
     }
 } catch (PDOException $e) {
     error_log('[REPORT VIOLATION ERROR] ' . $e->getMessage());
     http_response_code(500);
-    echo json_encode(['ok' => false, 'message' => 'Server error.']);
+    echo json_encode(['ok' => false, 'message' => 'Server error: ' . $e->getMessage()]);
 }
