@@ -4,30 +4,25 @@ ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
 
-require_once __DIR__ . '/../../config/db.php'; // $pdo (PDO)
+require_once __DIR__ . '/../../config/db.php'; 
 
-// Proteksi: wajib login sebagai student
 if (!isset($_SESSION['user_id']) || ($_SESSION['role'] ?? '') !== 'student') {
     header("Location: login.php");
     exit();
 }
 
-// Dapatkan Data User dari Session
 $user_id         = $_SESSION['user_id'] ?? null;
 $user_email      = $_SESSION['email'] ?? 'SISWA';
 $user_name       = $_SESSION['name'] ?? 'User Coding';
 $identity_number = $_SESSION['identity_number'] ?? 'DEV-001';
 
-// Ambil project/room_id dari parameter URL (opsional)
 $room_id = isset($_GET['room_id']) ? intval($_GET['room_id']) : ($_SESSION['room_id'] ?? 1);
 
-// Default Fallback
 $project_title       = "Workspace Project";
 $duration_minutes    = 90;
 $project_description = "Tulis dan kembangkan kode program Anda di sini.";
 $question_text       = "// Tulis solusi koding Anda di sini\nprint('Hello World');";
 
-// === GUARD: wajib sudah "join" dulu lewat dashboard, dan sesi harus masih 'ongoing' ===
 try {
     $stmtSession = $pdo->prepare("
         SELECT * FROM sessions
@@ -59,7 +54,6 @@ if ($exam_session['status'] === 'completed') {
     exit();
 }
 
-// Token CSRF untuk komunikasi ke controller pelanggaran & finish exam
 if (empty($_SESSION['csrf_token'])) {
     $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
 }
@@ -81,7 +75,6 @@ try {
     error_log('[LEMBAR ROOM FETCH ERROR] ' . $e->getMessage());
 }
 
-// Hitung SISA WAKTU berdasarkan waktu join sebenarnya di database
 $total_duration_seconds = $duration_minutes * 60;
 $joined_at_timestamp    = strtotime($exam_session['joined_at'] ?? 'now');
 $elapsed_seconds        = max(0, time() - $joined_at_timestamp);
@@ -93,20 +86,16 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lembar Pengerjaan - <?= htmlspecialchars($project_title) ?></title>
-    <!-- Tailwind CSS -->
+
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-    <!-- Monaco Editor Loader & CSS -->
     <script src="https://unpkg.com/monaco-editor@0.33.0/min/vs/loader.js"></script>
     <link rel="stylesheet" data-name="vs/editor/editor.main" href="https://unpkg.com/monaco-editor@0.33.0/min/vs/editor/editor.main.css">
 
-    <!-- TensorFlow & COCO-SSD -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
-    <!-- PeerJS -->
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 
     <style>
@@ -120,7 +109,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
 </head>
 <body class="h-screen flex flex-col overflow-hidden select-none bg-[#1e1e1e] text-[#d4d4d4]">
 
-    <!-- OVERLAY: Wajib klik dulu supaya browser mengizinkan Fullscreen API & Screen Share -->
     <div id="start-overlay" class="fixed inset-0 z-50 bg-[#1e1e1e]/90 flex items-center justify-center px-6">
         <div class="bg-[#252526] rounded-lg shadow-2xl p-8 max-w-md w-full text-center border border-[#333333]">
             <h1 class="text-lg font-bold text-[#cccccc] mb-2">Siap Memulai Ujian?</h1>
@@ -130,13 +118,12 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 Akumulasi <span class="text-[#f48771] font-semibold">3 kali</span> pelanggaran akan membuat ujian otomatis <span class="text-[#f48771] font-semibold">gugur</span>.
             </p>
             <p id="start-error" class="hidden text-[10px] text-[#f48771] mb-3"></p>
-            <button id="start-btn" class="bg-[#0e639c] hover:bg-[#1177bb] active:scale-95 text-white font-medium px-6 py-2.5 rounded text-xs transition-all shadow-md">
+            <button type="button" id="start-btn" class="bg-[#0e639c] hover:bg-[#1177bb] active:scale-95 text-white font-medium px-6 py-2.5 rounded text-xs transition-all shadow-md">
                 Mulai Ujian (Fullscreen + Share Screen)
             </button>
         </div>
     </div>
 
-    <!-- WARNING BANNER -->
     <div id="violation-banner" class="hidden fixed top-0 left-0 right-0 z-40 bg-[#f48771] text-black text-xs font-bold text-center py-2 px-4 shadow-md">
         <span id="violation-text">Pelanggaran terdeteksi.</span>
         <span id="violation-count-wrap"> (Pelanggaran ke-<span id="violation-count">0</span> dari 3)</span>
@@ -162,10 +149,8 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         </div>
     </div>
 
-    <!-- HIDDEN WEBCAM ELEMENT UNTUK PROCTORING AI -->
     <video id="proctoring-video" autoplay playsinline muted style="display:none;"></video>
 
-    <!-- KAMERA PENGAWASAN PREVIEW -->
     <div id="webcam-box" class="fixed bottom-4 right-4 z-30 w-36 rounded overflow-hidden border border-[#454545] shadow-2xl bg-black">
         <video id="webcam-preview-video" autoplay muted playsinline class="w-full h-auto block"></video>
         <div id="webcam-status" class="absolute top-1 left-1 flex items-center gap-1 bg-black/70 px-1.5 py-0.5 rounded text-[9px] text-white font-medium">
@@ -174,7 +159,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         
     </div>
 
-    <!-- VS CODE TOP ACTIVITY BAR -->
     <div class="bg-[#333333] text-[#cccccc] px-4 py-1.5 text-xs flex justify-between items-center border-b border-[#252526] select-none">
         <div class="flex items-center gap-2">
             <span class="w-2.5 h-2.5 rounded-full bg-[#f48771]"></span>
@@ -192,7 +176,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         </div>
     </div>
 
-    <!-- FORM PENGERJAAN UTAMA -->
     <form id="code-form" action="../../controllers/student/finish_exam.php" method="POST" class="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-0 overflow-hidden bg-[#1e1e1e]">
         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
         <input type="hidden" name="room_id" value="<?= htmlspecialchars($room_id) ?>">
@@ -200,7 +183,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         <input type="hidden" name="answer_code" id="hidden_code_input">
         <input type="hidden" name="flight_time_data" id="flight-time-input">
 
-        <!-- PANEL 1: EXPLORER -->
         <div class="bg-[#252526] border-r border-[#333333] flex flex-col justify-between overflow-y-auto text-xs">
             <div>
                 <div class="px-4 py-2 text-[11px] font-bold text-[#bbbbbb] tracking-wider uppercase border-b border-[#333333] flex justify-between items-center bg-[#2d2d2d]">
@@ -236,7 +218,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             </div>
         </div>
 
-        <!-- AREA KANAN (EDITOR & TERMINAL) -->
         <div class="lg:col-span-3 flex flex-col h-full overflow-hidden bg-[#1e1e1e]">
             <div class="flex-1 flex flex-col overflow-hidden relative">
                 <div class="bg-[#2d2d2d] px-3 py-1.5 border-b border-[#333333] flex justify-between items-center text-xs">
@@ -265,7 +246,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 </div>
             </div>
 
-            <!-- TERMINAL BAWAH -->
             <div id="bottom-terminal-panel" class="hidden h-48 bg-[#252526] border-t border-[#333333] flex flex-col text-xs z-20">
                 <div class="bg-[#2d2d2d] px-4 py-1.5 border-b border-[#333333] flex justify-between items-center text-[11px] text-[#cccccc]">
                     <div class="flex items-center gap-4 font-semibold">
@@ -303,7 +283,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         const VIOLATION_URL = '../../controllers/student/report_violation.php';
         const LEAVE_URL    = '../../controllers/student/leave_exam.php';
 
-        // --- 1. TIMER ---
         let totalSeconds = <?= (int) $remaining_seconds ?>;
         const timerDisplay = document.getElementById('countdown-timer');
 
@@ -332,7 +311,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         setInterval(updateTimer, 1000);
         updateTimer();
 
-        // --- 1.1 KEYSTROKE ---
         let keystrokeLogs = [];
         let lastKeyDownTime = null;
 
@@ -350,7 +328,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             lastKeyDownTime = currentTime;
         });
 
-        // --- 1.2 PEERJS STREAMING PERBAIKAN ---
         let studentPeer = null;
         let supervisorConn = null;
         let camStreamGlobal = null;
@@ -527,12 +504,11 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }
         }
 
-        // --- FIX SHARE SCREEN (HANYA SELURUH LAYAR / ENTIRE SCREEN) ---
         async function startScreenShare() {
             try {
                 const stream = await navigator.mediaDevices.getDisplayMedia({
                     video: { 
-                        displaySurface: 'monitor', // Hint agar browser mengarahkan ke Seluruh Layar
+                        displaySurface: 'monitor', 
                         cursor: 'always', 
                         frameRate: { max: 15 } 
                     },
@@ -542,12 +518,10 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 const videoTrack = stream.getVideoTracks()[0];
                 const settings = videoTrack.getSettings();
 
-                // WAJIB: hanya Entire Screen / monitor.
-                // Jika browser memberi informasi displaySurface dan bukan monitor, tolak.
                 if (settings.displaySurface !== 'monitor') {
                     videoTrack.stop();
                     stream.getTracks().forEach(t => t.stop());
-                    alert("⚠️ DITOLAK! Pilih 'Seluruh Layar / Entire Screen'. Window dan Tab tidak diperbolehkan.");
+                    alert("DITOLAK! Pilih 'Seluruh Layar / Entire Screen'. Window dan Tab tidak diperbolehkan.");
                     return false;
                 }
 
@@ -569,7 +543,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }
         }
 
-        // --- 1.3 AI PROCTORING ---
         let mediaRecorder;
         let recordedChunks = [];
         let isRecordingClip = false;
@@ -689,7 +662,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }).catch(error => console.error("Gagal mengunggah klip video:", error));
         }
 
-        // --- 2. MONACO EDITOR & MULTI-FILE ENGINE ---
         let editor = null;
         const extensionMap = {
             'py': 'python', 'rb': 'ruby', 'js': 'javascript',
@@ -866,7 +838,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }
         }
 
-        // --- 3. TERMINAL & COMPILER ---
         function toggleTerminal() {
             const terminalPanel = document.getElementById('bottom-terminal-panel');
             terminalPanel.classList.toggle('hidden');
@@ -990,10 +961,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             return false;
         }
 
-        // --- 4. PROTEKSI ANTI-KELUAR-TAB ---
-        // ROOM_ID, CSRF_TOKEN, VIOLATION_URL, dan LEAVE_URL sudah didefinisikan
-        // di awal script. Jangan deklarasikan ulang dengan const.
-
         let violationCount = 0;
         let examStarted = false;
         let isFinishing = false;
@@ -1036,7 +1003,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 const data = await res.json();
                 const serverCount = Number(data.count);
 
-                // UI tidak pernah menggugurkan sebelum hitungan lokal/server mencapai 3.
                 if (Number.isFinite(serverCount) && serverCount > violationCount) {
                     violationCount = serverCount;
                 } else {
@@ -1054,7 +1020,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 }
                 return true;
             } catch (e) {
-                // Bila endpoint gagal, kesempatan tetap dihitung di sisi browser.
                 violationCount = Math.min(3, violationCount + 1);
                 showViolationBanner(violationCount);
                 if (violationCount >= 3) {
@@ -1090,7 +1055,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 }
             }
 
-            // SCREEN SHARE TIDAK DIUBAH: tetap memakai fungsi startScreenShare() yang sudah ada.
             const shareOk = await startScreenShare();
             if (!shareOk) {
                 if (errEl) {
@@ -1111,7 +1075,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             connectToSupervisor();
         });
 
-        // Pindah tab = tepat 1 pelanggaran. Event fullscreen yang ikut berubah tidak dihitung lagi.
         document.addEventListener('visibilitychange', () => {
             if (!examStarted || isFinishing) return;
 
@@ -1123,12 +1086,10 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             }
         });
 
-        // Keluar fullscreen pertama diabaikan. Keluar fullscreen berikutnya = pelanggaran.
         document.addEventListener('fullscreenchange', () => {
             if (!examStarted || isFinishing || document.fullscreenElement) return;
 
             if (tabSwitchPending) {
-                // Perubahan fullscreen akibat pindah tab jangan menjadi hitungan kedua.
                 setTimeout(() => { tabSwitchPending = false; }, 300);
                 return;
             }
@@ -1141,8 +1102,6 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             queueViolation('keluar fullscreen');
         });
 
-        // Penutupan halaman dicatat sebagai pelanggaran. Jangan memakai leave_exam.php
-        // karena endpoint tersebut dapat mengakhiri sesi secara langsung.
         function reportPageClose() {
             if (!examStarted || isFinishing || pageExitReported) return;
             pageExitReported = true;
