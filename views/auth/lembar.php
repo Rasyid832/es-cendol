@@ -168,7 +168,7 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
 
         <div class="flex items-center gap-3">
             <div id="ai-status-badge" class="hidden sm:flex items-center gap-1 bg-[#252526] px-2.5 py-0.5 rounded text-[10px] text-[#4ec9b0] border border-[#3c3c3c]">
-                <span>🛡️ AI Active</span>
+                <span>Active</span>
             </div>
             <div class="bg-[#252526] px-3 py-1 rounded text-xs border border-[#3c3c3c] font-mono text-[#4ec9b0]">
                 TIME: <span id="countdown-timer" class="font-bold text-[#ce9178]">00:00:00</span>
@@ -530,8 +530,10 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
                 screenStreamGlobal.getVideoTracks()[0].addEventListener('ended', () => {
                     screenCallInstance = null;
                     screenStreamGlobal = null;
+
                     if (examStarted && !isFinishing) {
-                        reportViolation('berhenti membagikan layar (screen share)');
+                        isFinishing = true;
+                        window.location.href = '../student/dashboard.php';
                     }
                 });
 
