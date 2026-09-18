@@ -181,6 +181,8 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
         <input type="hidden" name="room_id" value="<?= htmlspecialchars($room_id) ?>">
         <input type="hidden" name="language" id="language-hidden" value="python">
         <input type="hidden" name="answer_code" id="hidden_code_input">
+        <input type="hidden" name="submitted_code" id="submitted-code-input">
+        <input type="hidden" name="submitted_language" id="submitted-language-input">
         <input type="hidden" name="flight_time_data" id="flight-time-input">
 
         <div class="bg-[#252526] border-r border-[#333333] flex flex-col justify-between overflow-y-auto text-xs">
@@ -957,6 +959,9 @@ $remaining_seconds      = max(0, $total_duration_seconds - $elapsed_seconds);
             if (confirm('Yakin ingin mengirimkan jawaban ujian ini?')) {
                 isFinishing = true;
                 document.getElementById('hidden_code_input').value = codeVal;
+                document.getElementById('submitted-code-input').value = codeVal;
+                document.getElementById('submitted-language-input').value =
+                    document.getElementById('language-hidden').value;
                 document.getElementById('flight-time-input').value = JSON.stringify(keystrokeLogs);
                 return true;
             }
