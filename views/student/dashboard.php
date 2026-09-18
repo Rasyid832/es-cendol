@@ -106,23 +106,11 @@ try {
                     </p>
                 <?php endif; ?>
 
-                <form action="../auth/room.php" method="POST" class="flex flex-col sm:flex-row gap-3">
-                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token']) ?>">
-                    <div class="flex-1 flex items-center gap-3 bg-[#0b1120] border border-slate-700 rounded-xl px-4 py-3 focus-within:border-indigo-500 transition">
-                        <i class="fa-solid fa-key text-slate-500"></i>
-                        <input
-                            type="text"
-                            name="room_code"
-                            placeholder="Masukkan ID Room (Misal: RM-3105)"
-                            class="bg-transparent flex-1 text-sm text-white placeholder-slate-500 focus:outline-none"
-                            required
-                            autocomplete="off"
-                        >
-                    </div>
-                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-sm px-6 py-3 rounded-xl transition whitespace-nowrap">
-                        Masuk
-                    </button>
-                </form>
+                <a href="../auth/room.php?csrf_token=<?= urlencode($_SESSION['csrf_token']) ?>"
+                   class="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-semibold text-sm px-6 py-3.5 rounded-xl transition w-full sm:w-auto">
+                    <i class="fa-solid fa-key"></i>
+                    Masuk
+                </a>
             </div>
 
             <!-- CARD: RIWAYAT UJIAN -->
